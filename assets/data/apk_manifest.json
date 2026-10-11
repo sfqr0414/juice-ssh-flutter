@@ -1,0 +1,31 @@
+{
+ "app": "JuiceSSH",
+ "versionName": "3.2.2",
+ "versionCode": 200,
+ "package": "com.sonelli.juicessh",
+ "minSdkVersion": 26,
+ "targetSdkVersion": 29,
+ "defaultFont": "Cascadia Code Mono",
+ "fontOrder": [
+  "Cascadia Code Mono",
+  "Sauce Code Pro",
+  "Roboto Mono",
+  "JetBrains Mono",
+  "Fira Code",
+  "Open Dyslexic",
+  "Inconsolata",
+  "Droid Sans Mono"
+ ],
+ "fontAssets": {
+  "Cascadia Code Mono": "Caskaydia.Cove.Regular.Nerd.Font.Complete.Mono.otf",
+  "Sauce Code Pro": "Sauce.Code.Pro.Nerd.Font.Complete.ttf",
+  "Inconsolata": "Inconsolata.Nerd.Font.Complete.Mono.otf",
+  "Roboto Mono": "Roboto.Mono.Nerd.Font.Complete.Mono.ttf",
+  "JetBrains Mono": "JetBrains.Mono.Regular.Nerd.Font.Complete.Mono.ttf",
+  "Fira Code": "Fira.Code.Regular.Nerd.Font.Complete.ttf",
+  "Open Dyslexic": "OpenDyslexic.Regular.Nerd.Font.Complete.Mono.otf",
+  "Droid Sans Mono": "Droid.Sans.Mono.Nerd.Font.Complete.otf"
+ },
+ "defaultTerminalThemeIndex": 0,
+ "defaultFontSize": 8
+}

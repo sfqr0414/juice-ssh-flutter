@@ -1,0 +1,25 @@
+# 换行统一：仓库内存 LF，检出到工作区时按类型还原。
+# 说明：docs/*.md 在本项目里按 CRLF 维护（见 IMPLEMENTATION-NOTES.md 的追加规约，
+# 该规约要求 CRLF、无孤立 LF/CR、单个结尾 CRLF），因此这里显式声明 md 用 CRLF，
+# 保证重新检出后仍是同一套字节约定。
+* text=auto
+
+*.dart   text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.py     text eol=lf
+*.kt     text eol=lf
+*.xml    text eol=lf
+*.cmake  text eol=lf
+*.cc     text eol=lf
+*.h      text eol=lf
+*.md     text eol=crlf
+
+# 二进制资源不做换行处理
+*.ttf    binary
+*.otf    binary
+*.png    binary
+*.jpg    binary
+*.db     binary
+*.apk    binary
+*.jar    binary

@@ -1,0 +1,108 @@
+name: juice_ssh_flutter
+description: "JuiceSSH 复刻版 —— 用 Flutter 重建的 SSH 客户端。"
+publish_to: 'none'
+
+# 与原版 JuiceSSH 对应：versionName 3.2.2 / versionCode 200
+version: 3.2.2+200
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # --- SSH ---
+  dartssh2: ^4.1.0
+
+  # --- 终端仿真 ---
+  xterm: ^4.0.0
+
+  # --- 存储 ---
+  sqflite: ^2.4.4
+  sqflite_common_ffi: ^2.4.3
+  path: ^1.9.0
+  path_provider: ^2.1.6
+  shared_preferences: ^2.5.6
+  flutter_secure_storage: ^11.2.0
+
+  # --- 状态管理 ---
+  provider: ^6.1.5
+
+  # --- 加密 / 密钥 ---
+  pointycastle: ^4.0.0
+  basic_utils: ^5.8.2
+
+  # --- UI / 平台 ---
+  uuid: ^4.6.0
+  intl: ^0.20.3
+  file_picker: ^13.1.0
+  package_info_plus: ^10.2.2
+  url_launcher: ^6.3.3
+  flutter_local_notifications: ^22.3.1
+  wakelock_plus: ^1.8.1
+  share_plus: ^13.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# flutter_local_notifications_linux（仅 Linux 传递依赖）锁死 dbus ^0.7.8，
+# 而 wakelock_plus 需要 dbus ^0.8.0。本项目只构建 Android 与 Windows，
+# 为让版本求解通过，这里统一到 dbus 0.8（不影响任何实际编译进去的平台）。
+dependency_overrides:
+  dbus: ^0.8.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/i18n/
+    - assets/data/
+
+  # 终端字体：与原版 JuiceSSH 3.2.2 内置的 8 套 Nerd Font 一致
+  fonts:
+    - family: JuiceTerminalCascadiaCode
+      fonts:
+        - asset: assets/fonts/Caskaydia.Cove.Regular.Nerd.Font.Complete.Mono.otf
+    - family: JuiceTerminalSauceCodePro
+      fonts:
+        - asset: assets/fonts/Sauce.Code.Pro.Nerd.Font.Complete.ttf
+    - family: JuiceTerminalInconsolata
+      fonts:
+        - asset: assets/fonts/Inconsolata.Nerd.Font.Complete.Mono.otf
+    - family: JuiceTerminalRobotoMono
+      fonts:
+        - asset: assets/fonts/Roboto.Mono.Nerd.Font.Complete.Mono.ttf
+    - family: JuiceTerminalJetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrains.Mono.Regular.Nerd.Font.Complete.Mono.ttf
+    - family: JuiceTerminalFiraCode
+      fonts:
+        - asset: assets/fonts/Fira.Code.Regular.Nerd.Font.Complete.ttf
+    - family: JuiceTerminalOpenDyslexic
+      fonts:
+        - asset: assets/fonts/OpenDyslexic.Regular.Nerd.Font.Complete.Mono.otf
+    - family: JuiceTerminalDroidSansMono
+      fonts:
+        - asset: assets/fonts/Droid.Sans.Mono.Nerd.Font.Complete.otf
+    # 原版用 FontAwesome 字体渲染自带图标（FontAwesomeTextView）
+    - family: JuiceFontAwesome
+      fonts:
+        - asset: assets/fonts/fontawesome-webfont.ttf
+    # UI 正文字体。设备上只有 2.37MB 的可变字体 /system/fonts/Roboto-Regular.ttf
+    # （API 36 没有单独的 Roboto-Bold.ttf，DroidSans-Bold.ttf 也只是它的符号链接），
+    # 原版就是靠可变字体的 w700 实例来渲染粗体。这里用 fontTools 把 wght/wdth/ital
+    # 三个轴钉死，实例化成真正的静态 w400/w700，Flutter 才会按声明字重取到真粗体，
+    # 而不是合成描边（详见 docs/IMPLEMENTATION-NOTES.md 第 64 轮）。
+    - family: JuiceUiRoboto
+      fonts:
+        - asset: assets/fonts/Roboto-w400.ttf
+          weight: 400
+        - asset: assets/fonts/Roboto-w700.ttf
+          weight: 700

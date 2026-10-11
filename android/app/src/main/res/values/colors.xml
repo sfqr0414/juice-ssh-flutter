@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 取自原版 res/values/colors.xml -->
+    <color name="ic_launcher_background">#ffffff</color>
+
+    <!-- 状态栏底色 = 原版 `@color/primary_darker`（亮色主题 `#fff0d235`）。
+         原版 `Theme.JuiceSSH` 把 `colorPrimaryDark` 指向它，而 `colorPrimaryDark`
+         就是 API 21+ 的状态栏底色 —— 状态栏因此与 ActionBar **同色连续**。
+         设备实测原版亮色截图 y0..y260 主色为 (240,210,53)，中间无黑色分界带。 -->
+    <color name="juice_primary_darker">#FFF0D235</color>
+</resources>

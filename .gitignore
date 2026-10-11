@@ -1,0 +1,75 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Widget Preview related
+.widget_preview/
+
+# =====================================================================
+# 本项目：只跟踪源码，不跟踪中间产物、缓存与取证材料
+# =====================================================================
+
+# 分发件（构建出来的 APK）
+/dist/
+
+# Android 构建缓存与本地配置、签名材料
+/android/.gradle/
+/android/local.properties
+/android/key.properties
+*.jks
+*.keystore
+
+# Windows 桌面端脚手架产物（Flutter 生成）
+/windows/flutter/ephemeral/
+
+# 取证与验证材料：截图、uiautomator dump、原版数据库只读副本、
+# **测试用 SSH 私钥**（无论如何都不应入库）
+/.research/
+
+# 原版参考 APK（第三方二进制，体积大，不入库）
+/reference/
+
+# 临时文件
+*.tmp

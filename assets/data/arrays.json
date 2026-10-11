@@ -1,0 +1,112 @@
+{
+ "dark_theme_names": [
+  "Automatic (system default)",
+  "Light",
+  "Dark"
+ ],
+ "dark_theme_values": [
+  "3",
+  "1",
+  "2"
+ ],
+ "font_names": [
+  "Cascadia Code Mono",
+  "Sauce Code Pro",
+  "Roboto Mono",
+  "JetBrains Mono",
+  "Fira Code",
+  "Open Dyslexic",
+  "Inconsolata",
+  "Droid Sans Mono"
+ ],
+ "terminal_alt_behaviour_names": [
+  "Default",
+  "ALT sends ESC"
+ ],
+ "terminal_alt_behaviour_values": [
+  "0",
+  "1"
+ ],
+ "terminal_bell_mode_names": [
+  "Disabled",
+  "Vibrate Device",
+  "Show Notification"
+ ],
+ "terminal_bell_mode_values": [
+  "0",
+  "1",
+  "2"
+ ],
+ "terminal_horizontal_swipe_mode_names": [
+  "Irssi next/prev window",
+  "WeeChat next/prev window",
+  "Tmux next/prev window",
+  "Screen next/prev window",
+  "Disabled"
+ ],
+ "terminal_horizontal_swipe_mode_values": [
+  "0",
+  "1",
+  "2",
+  "3",
+  "4"
+ ],
+ "terminal_keyboard_position_names": [
+  "Above Terminal",
+  "Below Terminal",
+  "Disabled"
+ ],
+ "terminal_keyboard_position_values": [
+  "0",
+  "1",
+  "2"
+ ],
+ "terminal_theme_names": [
+  "Dark",
+  "Light",
+  "Solarized Dark",
+  "Solarized Light",
+  "80's Hacker",
+  "Monokai",
+  "Tiger Orange",
+  "Tiger Black",
+  "Bifrost"
+ ],
+ "terminal_theme_values": [
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8"
+ ],
+ "terminal_typeTitles": [
+  "linux",
+  "xterm",
+  "xterm-color",
+  "xterm-256color",
+  "vt100"
+ ],
+ "terminal_typeValues": [
+  "linux",
+  "xterm",
+  "xterm-color",
+  "xterm-256color",
+  "vt100"
+ ],
+ "widget_update_frequencies_names": [
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly"
+ ],
+ "widget_update_frequencies_values": [
+  "3600",
+  "86400",
+  "604800",
+  "2419200"
+ ]
+}

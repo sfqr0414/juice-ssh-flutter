@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 暗色主题：原版 `@color/primary_darker` 在 values-night 下为 `#ffd5ba31`。
+         设备实测原版暗色截图（o_d_ab.png）状态栏带主色为 (213,186,49)，且与下方
+         ActionBar 连续同色。 -->
+    <color name="juice_primary_darker">#FFD5BA31</color>
+</resources>
