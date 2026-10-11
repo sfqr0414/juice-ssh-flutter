@@ -6996,3 +6996,70 @@ if (_identityIds.length > 1) ...[
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73018903 字节），SHA-256：
   `FE546F65FBF2BC444535064B501E04F4459508BA157939B378385F714500859E`。
+## 第 245-247 轮：状态栏与 ActionBar 同色（根因、两层改法、双主题设备验证）；工程纳入 git
+
+### 一、问题与根因
+
+用户反馈：状态栏顶端是黑色，与应用头部颜色不一致。对既有截图量顶部各带主色：
+
+| 截图 | y20..100 主色 | 含义 |
+|---|---|---|
+| 原版暗色 `o_d_ab.png` | (213,186,49) = #D5BA31 | 状态栏 = ActionBar 色 |
+| 原版亮色 `o_ed.png` | (240,210,53) = #F0D235 | 同上 |
+| 克隆 `ab175.png`（改前） | (0,0,0) | **黑色** |
+| 克隆 `id232.png`（改前） | (0,0,0) | **黑色** |
+
+**根因**：原版 `Theme.JuiceSSH` 的 `colorPrimaryDark = @color/primary_darker`，而
+`colorPrimaryDark` 就是 API 21+ 的状态栏底色 => 原版状态栏与 ActionBar **同色连续**；
+克隆的 Android 主题只有 Flutter 模板的 `Theme.Light/Black.NoTitleBar`，`lib/` 里也没有
+任何 `SystemChrome` 调用 => 状态栏落回平台默认的**黑色**。
+
+图标为**白色**：原版 `windowLightStatusBar` 未开；实测 `o_d_ab.png` 状态栏带内非底色像素
+只有 `(255,255,255)`（2043px）。
+
+### 二、改法（两层）
+
+1. **Flutter 侧** `lib/app/juice_theme.dart`：`AppBarTheme` 增加 `systemOverlayStyle`
+   （`statusBarColor: palette.primaryDarker`、`statusBarIconBrightness: light`、
+   `statusBarBrightness: dark`），随应用内主题（亮/暗/跟随系统）自动切换；
+2. **Android 侧** `res/values{,‑night}/styles.xml` 的 `LaunchTheme` 与 `NormalTheme` 加
+   `android:statusBarColor = @color/juice_primary_darker` 与 `windowLightStatusBar=false`；
+   `res/values{,‑night}/colors.xml` 给出亮 `#F0D235` / 暗 `#D5BA31`，启动首帧到 Flutter
+   首帧之间也不闪黑。克隆 `targetSdk = 29`（非 edge-to-edge），`statusBarColor` 有效。
+
+### 三、设备验证（双主题）
+
+| 场景 | 状态栏 (540,60) | 顶部色带 | 图标 |
+|---|---|---|---|
+| 亮色（系统夜间关） | **(240,210,53)** = #F0D235 | y0..y274 连续同色，y276 转白 | (255,255,255) 2461px |
+| 暗色（`cmd uimode night yes`） | **(213,186,49)** = #D5BA31 | y0..y274 连续同色，y276 转黑 | (255,255,255) 2426px |
+
+与原版实测逐项一致（`o_ed.png` y0..y260 连续 (240,210,53)、`o_d_ab.png` 连续
+(213,186,49)、图标均白色）。复验：应用主题设「跟随系统」，
+`adb shell cmd uimode night yes|no` 后重启应用再截图。
+
+### 四、仍未对齐的一处（记录，未修）
+
+**终端页状态栏**：原版 `o_term.png` y20..100 为 `(7,54,66)` = **#073642**（终端自己的配色），
+克隆 `mine_terminal4.png` 为 `(110,96,24)`（≈黄色 50%）。两者不同，需单独处理；本轮只修
+带 AppBar 的主界面页面。
+
+### 五、工程纳入 git（只跟踪源码）
+
+* `git init -b main` => 分支 `main`，提交 `2294f57`，**137 个文件**，`.git` 9.2MB，工作区干净；
+* `.gitignore` 增补：`/dist/`、`/android/.gradle/`、`/android/local.properties`、
+  `key.properties`、`*.jks`、`*.keystore`、`/windows/flutter/ephemeral/`、
+  **`/.research/`**（截图、uiautomator dump、原版数据库只读副本、**测试私钥**）、
+  `/reference/`（第三方参考 APK）、`*.tmp`；
+* 新增 `.gitattributes`：仓库内存 LF，`.md` 显式 `eol=crlf`（与本文件 CRLF 追加规约一致），
+  字体/图片/APK 标为 `binary`；
+* 提交前检查：暂存清单中无 `build|dist|.dart_tool|.research|reference|.idea` 路径，
+  且无密钥/数据库/APK；体积最大的几项是 `assets/fonts/*`（构建所需源码资源）。
+
+### 六、交付物
+
+字节数较上一版 73,018,903 -> 73019379：**变化有实质原因**（新增
+`values/colors.xml`、`values-night/colors.xml` 与两个 styles 的条目），不是无源改动。
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `C8A0448259F518C74D73E0B93D639FB6E21323BECE2AD434F95B38415627775C`。
