@@ -127,6 +127,7 @@ void main() {
     await fill(tester, 2, '127.0.0.1');
     await fill(tester, 3, '2222');
     debugPrint('PF 点 Connection 选择器 = ${await tapLabel(tester, '(Pick one)')}');
+    debugPrint('PF 选择器选项=${visibleTexts(tester)}');
     debugPrint('PF 选 pfhost = ${await tapLabel(tester, 'pfhost')}');
     debugPrint('PF 点 Save(端口转发) = ${await tapLabel(tester, 'Save')}');
     await tester.pump(const Duration(seconds: 2));
