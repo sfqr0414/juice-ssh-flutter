@@ -1149,6 +1149,15 @@ class _TerminalPageState extends State<TerminalPage> {
       // 拖动即扩展选区（原版提示的"拖到起点 / 终点"）。
       _applyCopySelection(_cellAt(event.localPosition));
     }
+    // 直接量观测：拖动期间滚动偏移是否变化。此前两次 A/B 都用"整屏像素差异"
+    // 做判据、两次都不成立（第 279 轮实验无效、第 280 轮两组 2.27% 无区别），
+    // 这里改成读 `ScrollPosition` 本身 —— 交互式程序在跑时手指拖动被禁掉，
+    // `pixels` 应始终等于 `maxScrollExtent`；普通 shell 拖动时会小于它。
+    if (_terminalScroll.hasClients) {
+      final pos = _terminalScroll.position;
+      debugPrint('JuiceSshScroll: pixels=${pos.pixels.toStringAsFixed(1)} '
+          'max=${pos.maxScrollExtent.toStringAsFixed(1)}');
+    }
   }
 
   void _onTerminalPointerUp(PointerUpEvent event) {
