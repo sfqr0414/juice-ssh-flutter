@@ -199,8 +199,13 @@ class _TerminalPageState extends State<TerminalPage> {
     // 交互式回调只能由「当前附着的页面」提供；脱离时置空，
     // 后台会话遇到主机密钥/密码质询一律按拒绝处理。
     _controller.onHostKeyChallenge = (challenge) async {
+      // 诊断（第 33 轮）：区分"回调没进来/未 mounted"与"卡在弹窗里"。
+      debugPrint('JuiceSshHandler: 页面回调进入 mounted=$mounted');
       if (!mounted) return HostKeyVerdict.rejected;
-      return JuiceDialogs.confirmHostKey(context, challenge);
+      // ignore: avoid_print
+      final verdict = await JuiceDialogs.confirmHostKey(context, challenge);
+      debugPrint('JuiceSshHandler: 弹窗返回 $verdict');
+      return verdict;
     };
     _controller.onPasswordPrompt = (prompt, echo) async {
       if (!mounted) return null;
@@ -1141,8 +1146,10 @@ class _TerminalPageState extends State<TerminalPage> {
 
   void _onTerminalPointerMove(PointerMoveEvent event) {
     final origin = _longPressOrigin;
-    if (origin == null) return;
-    if ((event.position - origin).distance > _longPressSlop) {
+    // 这里**不能**提前 `return`：下方的"主屏拖动滚动"必须在每次指针移动时执行。
+    // 长按一旦因位移超阈值被取消，`_longPressOrigin` 就变 null；早期版本直接 return，
+    // 于是只有最初一两帧能驱动滚动 —— 表现为"时能动、多数不动"（第 49 轮定位）。
+    if (origin != null && (event.position - origin).distance > _longPressSlop) {
       _cancelLongPress();
     }
     if (_selectingStart || _selectingEnd) {
@@ -1156,6 +1163,28 @@ class _TerminalPageState extends State<TerminalPage> {
     //
     // 用 `assert` 包住：断言在 release 包中被整段剥离，交付的 APK 不会因为
     // 每次指针移动都打印而刷爆 logcat；调试/性能分析时仍可用。
+    // 主屏（普通 shell）：xterm 的 `TerminalGestureHandler` 用 `PanGestureRecognizer`
+    // 压在内部 `Scrollable` 之上（`terminal_view.dart:299` +
+    // `gesture/gesture_detector.dart:142`），垂直拖动会被它赢走，滚动视口永远收不到
+    // —— 用户报的"普通模式下不能滑屏滚动"就是这个。`jumpTo` 绕过竞技场所以照样有效，
+    // 极具迷惑性。
+    //
+    // 这里用**裸指针**（`Listener` 不进竞技场）自己驱动滚动：手指下滑 → 回看更早的历史。
+    // 备用屏（htop/vim 等）不驱动，保持"交互命令重绘期间禁止滑动"的原要求。
+    if (!_controller.interactiveProgram.value &&
+        !_selectingStart &&
+        !_selectingEnd &&
+        _terminalScroll.hasClients &&
+        event.delta.dy.abs() > 0.5) {
+      final pos = _terminalScroll.position;
+      // 拖动期间键盘/教程层可能正在改变布局：内容尺寸未就绪、或区间非法时直接放弃，
+      // 否则 `jumpTo` 会在断言里炸掉（`min > max` / 无 content dimensions）。
+      if (pos.hasContentDimensions && pos.maxScrollExtent > pos.minScrollExtent) {
+        final target = (pos.pixels - event.delta.dy)
+            .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+        if (target != pos.pixels) pos.jumpTo(target);
+      }
+    }
     assert(() {
       if (_terminalScroll.hasClients) {
         final pos = _terminalScroll.position;
@@ -1308,8 +1337,17 @@ class _TerminalPageState extends State<TerminalPage> {
                   // 直接量控件自己在屏幕上的位置：`boxTop` 是逻辑像素，
                   // 乘 dpr 就是物理像素，用来和"首行墨迹 y=241"对账。
                   final box = context.findRenderObject() as RenderBox?;
-                  final global =
-                      box == null ? Offset.zero : box.localToGlobal(Offset.zero);
+                  // `localToGlobal` 会一路 `getTransformTo` 往上走，只要有一个祖先
+                  // 还没完成布局就在 `hasSize` 上断言。这不是"理论上可能"：本段在
+                  // `LayoutBuilder` 里执行（**布局期**），而祖先包含路由转场的
+                  // `RenderFractionalTranslation` —— 集成测试里每次都命中，抛出的
+                  // 断言会把整个 layout callback 打断（第 49 轮用堆栈定位到本行）。
+                  //
+                  // 布局是自上而下的：这个祖先没布局完，本控件也一定还没有尺寸，
+                  // 所以用 `hasSize` 挡住即可；未就绪就沿用上一次的 `_terminalBoxTop`。
+                  final global = (box == null || !box.hasSize)
+                      ? Offset.zero
+                      : box.localToGlobal(Offset.zero);
                   _terminalBoxTop = global.dy;
                   final mq = MediaQuery.of(context);
                   final line =
@@ -1335,6 +1373,11 @@ class _TerminalPageState extends State<TerminalPage> {
                 }
               }
               return Listener(
+                // 这个 key 是诊断用的锚点（第 60 轮）：用来在集成测试里判定
+                // "屏幕上那份 TerminalView 是否真的在这段子树里"。
+                // `find.byType(Listener)` 数祖先是不行的 —— Flutter 内部
+                // （Scrollable / CustomTextEdit）自己也用 Listener。
+                key: const ValueKey<String>('juice-terminal-listener'),
                 // 长按终端弹出上下文菜单，与原版一致（原版是
                 // `registerForContextMenu(terminalView)`）。注意：xterm 内部自带
                 // `LongPressGestureRecognizer`（用于文本选择），外层 GestureDetector
@@ -1375,6 +1418,12 @@ class _TerminalPageState extends State<TerminalPage> {
                     // buffer ... the terminal will simulate scrolling by sending up/down
                     // arrow keys"），所以这里显式关掉：备用屏里竖向滑动不再产生任何输入。
                     // 主屏（普通 shell）的历史滚动不受影响，那是 `Scrollable` 自己的事。
+                    // 保持 false：xterm 的 `TerminalScrollGestureHandler` 在**主屏是透明的**
+                    // （`scroll_handler.dart:116-118`：`if (!isAltBuffer) return child;`），
+                    // 只有备用屏（htop/vim 等）才用它把滚动翻译成滚轮/方向键。用户实测
+                    // "进入交互命令时仍然可以上下滑动，和原版不一致"，所以备用屏里关掉
+                    // 这个模拟 —— 它与主屏的历史滚动**无关**（第 44 轮用实验证实：改成
+                    // true 数值完全不变），主屏滑不动的原因在别处。
                     simulateScroll: false,
                   ),
                 ),

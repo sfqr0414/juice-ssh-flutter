@@ -20,6 +20,7 @@
 //
 // 依赖：`python tools/_sshd.py 2222 --many-lines`（连接后吐 60 行，制造可滚历史）。
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -110,7 +111,11 @@ Future<void> dismissDialogs(WidgetTester tester) async {
   // 终端页连接失败时显示的 `Reconnect`、首页的 `Quick Connect` 全都会被"包含匹配"
   // 命中，于是连接刚建立就被我反复点掉，服务端只看到"客户端自己关了"。
   final modal = find.byType(Dialog).evaluate().length +
-      find.byType(AlertDialog).evaluate().length;
+      find.byType(AlertDialog).evaluate().length +
+      // 自定义弹窗（`JuiceAlertDialog`）不会被 `byType(Dialog)` 命中，而主机密钥
+      // 确认框里有 `SelectableText`，拿它当可靠标记 —— 第 31 轮的教训：门闩漏判
+      // 会让弹窗既不被处理、也不被发现，于是连接空等到超时。
+      find.byType(SelectableText).evaluate().length;
   if (modal == 0) return;
   for (final l in const [
     // 首次启动的"允许通知"授权模态窗 —— 它盖在一切之上，会吃掉后续所有点击。
@@ -124,6 +129,10 @@ Future<void> dismissDialogs(WidgetTester tester) async {
     '知道了',
     'Agree',
     'Yes',
+    // 主机密钥确认框的按钮是**大写** `ACCEPT`。`Accept` 匹配不到它（区分大小写），
+    // 于是弹窗一直留在屏幕上、回调永不返回、SSH 空等到 30 秒超时 —— 第 37 轮定位。
+    'ACCEPT',
+    "OK - I've got it!", // 终端首次进入的教程框会压在确认框下面，先点掉它
     'Accept',
     'Connect',
     'OK',
@@ -267,6 +276,33 @@ void main() {
     // 等**会话真正就绪**：轮询"出现可滚历史"。TerminalView 出现只说明终端页打开了，
     // 连接是后台进行的，所以不能拿它当"连上"。
     ScrollableState? st;
+    // 教程覆盖层（`_showTutorial` → `_TerminalTutorial`，与终端**同 Stack 的兄弟**
+    // `Positioned.fill`）会盖住整个终端，指针全落在它上面 —— 这正是"终端明明在页面
+    // `Listener` 之下、内联探针却一次都不触发"的原因（第 61 轮定位）。
+    // 这里按**匹配数量**逐个点掉，不再假设只有一个同名文案。
+    final tip = find.text("OK - I've got it!");
+    print('SCROLL 教程按钮匹配数 = ${tip.evaluate().length}');
+    for (var guard = 0; guard < 4 && tip.evaluate().isNotEmpty; guard++) {
+      // 先点按钮，再点屏幕中部：教程层多半整屏可点关闭。两者都试，只要有一处生效，
+      // 覆盖层就会消失（`剩余=0`），指针才能落到终端上。
+      await tester.tap(tip.last, warnIfMissed: false);
+      await tester.pump(const Duration(milliseconds: 300));
+      if (tip.evaluate().isNotEmpty) {
+        await tester.tapAt(const Offset(205, 434));
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      print('SCROLL 点掉教程层第 ${guard + 1} 次，剩余=${tip.evaluate().length}');
+    }
+
+    // 注入窗口：给宿主留出时间用 `adb shell input swipe` 注入**真实触摸**。
+    // 夹具手势到不了页面 `Listener`（第 51-56 轮反复证实），所以触摸滑动的判定
+    // 只能靠系统级注入；这里只推进帧、不做任何交互。
+    debugPrint('SCROLL 注入窗口开始（30 秒）');
+    for (var i = 0; i < 300; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    debugPrint('SCROLL 注入窗口结束');
+
     for (var i = 0; i < 60; i++) {
       await tester.pump(const Duration(milliseconds: 500));
       // 应用在**没有已存口令**时会先弹出口令框；不回答它，会话就会因为没有可用认证
@@ -280,7 +316,17 @@ void main() {
         debugPrint('SCROLL 出现口令框，填入 juice');
         await tester.enterText(promptFields.first, 'juice');
         await tester.pump(const Duration(milliseconds: 300));
-        for (final l in const ['OK', 'Connect', 'Save', '连接', '确定', 'Continue']) {
+        for (final l in const [
+          'ACCEPT', // 主机密钥确认框的按钮是大写 `ACCEPT`（`Accept` 匹配不到，区分大小写）
+          "OK - I've got it!", // 终端首次进入的教程框，会压在确认框下面
+          'OK',
+          'Connect',
+          'Save',
+          '连接',
+          '确定',
+          'Continue',
+          'Accept',
+        ]) {
           final f = finderFor(l);
           if (f.evaluate().isNotEmpty) {
             await tester.tap(f.first);
@@ -296,8 +342,13 @@ void main() {
         debugPrint('SCROLL 历史在第 ${i + 1} 次轮询出现（约 ${(i + 1) * 0.5} 秒）');
         break;
       }
-      if (i % 10 == 0) {
-        debugPrint('SCROLL 等待#$i 仍无历史');
+      if (i % 5 == 0) {
+        // 不再截断文案：主机密钥确认框的文字很可能排在第 8 条之后（终端页的
+        // 快捷键栏就有十几条），上一版 `take(8)` 把关键证据藏掉了。
+        final all = visibleTexts(tester);
+        debugPrint('SCROLL 等待#$i 仍无历史 文案共${all.length}条=$all '
+            'SelectableText=${find.byType(SelectableText).evaluate().length} '
+            'TextButton=${find.byType(TextButton).evaluate().length}');
       }
     }
     if (st == null) {
@@ -310,17 +361,100 @@ void main() {
     final before = st!.position.pixels;
     final max = st.position.maxScrollExtent;
 
-    // 手指上滑 = 看历史
-    await tester.drag(find.byType(TerminalView).last, const Offset(0, 240));
-    await tester.pump(const Duration(milliseconds: 1000));
-    final afterUp = st.position.pixels;
-    debugPrint('SCROLL 上滑: $before → $afterUp (max=$max) 有变化=${(afterUp - before).abs() > 1}');
+    // 手指上滑 = 看历史。**分帧读取**：如果是"先移动、随后被拉回底部"，
+    // 中间这几帧就能把回弹抓个正着（第 40 轮的决定性实验）。
+    // 拖动目标必须是**终端自己的 `Scrollable`**（`terminalScrollable` 选的就是
+    // `maxScrollExtent` 最大的那个 = index 0）。此前用 `find.byType(TerminalView).last`
+    // 拖了个空 —— 命中警告被过滤掉，于是"拖不动"这个假象骗了好几轮。
+    // 用**矩形重合**锁定终端那个 `Scrollable`：按 `maxScrollExtent` 猜会把底部键位条
+    // （横向滚动，范围恰好也是几百像素）当成终端 —— 第 54 轮就是这么被绕住的。
+    final tvRect = tester.getRect(find.byType(TerminalView));
+    final scAll = find.byType(Scrollable);
+    ScrollableState? terminalState;
+    for (var i = 0; i < scAll.evaluate().length; i++) {
+      final s = tester.state<ScrollableState>(scAll.at(i));
+      final rect = tester.getRect(scAll.at(i));
+      final pos = s.position;
+      debugPrint('SCROLL  SC#$i axis=${pos.axis} rect=$rect '
+          'max=${pos.maxScrollExtent.toStringAsFixed(1)} '
+          'px=${pos.pixels.toStringAsFixed(1)}');
+      if (pos.axis == Axis.vertical &&
+          rect.top >= tvRect.top - 1 &&
+          rect.bottom <= tvRect.bottom + 1) {
+        terminalState = s;
+      }
+    }
+    if (terminalState == null) {
+      fail('没找到与 TerminalView 重合的纵向 Scrollable');
+    }
+    final beforeT = terminalState.position.pixels;
+    final maxT = terminalState.position.maxScrollExtent;
+    debugPrint('SCROLL 终端视口: px=${beforeT.toStringAsFixed(1)} '
+        'max=${maxT.toStringAsFixed(1)}');
 
-    await tester.drag(find.byType(TerminalView).last, const Offset(0, -240));
+    // 必须拖**我实测的那一个** `Scrollable`：此前写死 `find.byType(Scrollable).at(0)`
+    // 是树序第一个（多半是底部键位条那个 `max=0` 的），与测量对象不是同一个 ——
+    // 于是"拖动无效"是个纯夹具错误（第 54 轮用它解释了"按下事件 0 行"）。
+    // 屏幕上那份终端是否真在页面 `Listener` 的子树里？用 key 判定 ——
+    // 数 `find.byType(Listener)` 会被 Flutter 内部的 Listener 骗到（第 59 轮的教训）。
+    final underPageListener = find
+        .ancestor(
+          of: find.byType(TerminalView),
+          matching: find.byKey(const ValueKey<String>('juice-terminal-listener')),
+        )
+        .evaluate()
+        .length;
+    debugPrint('SCROLL 终端在页面 Listener 之下 = ${underPageListener > 0}');
+
+    // 直接读出"终端中心这个点被谁接收"（第 65 轮）：不再靠推断定位拦截层。
+    final hit = HitTestResult();
+    WidgetsBinding.instance.hitTestInView(
+      hit,
+      tester.getCenter(find.byType(TerminalView)),
+      tester.view.viewId,
+    );
+    for (final entry in hit.path) {
+      print('SCROLL HIT ${entry.target.runtimeType}');
+    }
+
+    final terminalFinder = find.byWidget(terminalState.widget);
+    // 手工指针序列：`tester.drag` 是**单步**位移，而拖动识别器需要一串越过
+    // `kTouchSlop` 的 move 事件。用接近真手指的节奏复测，排除夹具假象
+    // （本 session 已被 .last 拖空 / "Accept" 大小写 / take(8) 截断坑过三次）。
+    final gesture = await tester.startGesture(tester.getCenter(terminalFinder));
+    await tester.pump(const Duration(milliseconds: 20));
+    for (var k = 0; k < 12; k++) {
+      await gesture.moveBy(const Offset(0, 20));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await gesture.up();
+    final afterDrag = st.position.pixels;
+    await tester.pump(const Duration(milliseconds: 16));
+    final after1 = st.position.pixels;
+    await tester.pump(const Duration(milliseconds: 200));
+    final after2 = st.position.pixels;
+    await tester.pump(const Duration(milliseconds: 800));
+    final afterUp = st.position.pixels;
+    debugPrint('SCROLL 上滑: $before → 拖动结束=$afterDrag → +16ms=$after1 '
+        '→ +200ms=$after2 → +1s=$afterUp (max=$max) 有变化=${(afterUp - before).abs() > 1}');
+
+    await tester.drag(terminalFinder, const Offset(0, -240));
     await tester.pump(const Duration(milliseconds: 1000));
     debugPrint('SCROLL 下滑: $afterUp → ${st.position.pixels}');
 
-    expect((afterUp - before).abs() > 1, isTrue,
-        reason: '普通模式下拖动终端没有改变滚动偏移 —— 就是用户报的滑不动');
+    // 注意：这里**不能**再做程序化 `jumpTo` 实验。第 50 轮它被放在断言之前，
+    // 把"离底距离"直接推成整个 `max`，于是测试以错误的理由变绿 —— 假阳性。
+    // 程序化可滚这一事实已在第 42 轮验证并记录，无需每次运行重复。
+    // 判据必须用"离底距离"，不能用 `pixels` 的绝对差：贴底时键盘/教程层改变布局
+    // 会把 `maxScrollExtent` 抬高，`pixels` 跟着涨 —— 那是"仍然贴底"，不是滚动，
+    // 第 46/47 轮就是被这个假阳性骗过（读到 695.8 > max=384.5）。
+    final beforeFromBottom = maxT - beforeT;
+    final afterFromBottom =
+        terminalState.position.maxScrollExtent - terminalState.position.pixels;
+    debugPrint('SCROLL 离底距离: $beforeFromBottom → $afterFromBottom '
+        '(越大说明越早的历史可见)');
+
+    expect(afterFromBottom > beforeFromBottom + 1, isTrue,
+        reason: '普通模式下拖动终端没有增加可见历史 —— 就是用户报的滑不动');
   });
 }

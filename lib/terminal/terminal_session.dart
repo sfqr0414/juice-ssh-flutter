@@ -56,10 +56,15 @@ class TerminalSessionController extends ChangeNotifier {
   /// 拼接"尾巴 + 本块"再扫描，就能跨块命中；尾巴只保留 24 字符，不会误伤。
   String _interactiveTail = '';
 
-  static final RegExp _interactiveOn =
-      RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)h');
-  static final RegExp _interactiveOff =
-      RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)l');
+  /// 只有**备用屏**才算"有交互式全屏程序在跑"。
+  ///
+  /// 锐边（第 38 轮，用户报的回归）：早先这里把鼠标上报模式
+  /// `1000/1002/1003` 也算了进来，但**普通 shell 自己就会开这些模式**
+  /// （readline 的鼠标支持等），于是日常敲命令时标志为真、`dragDevices` 被置空，
+  /// 手指滑动彻底失效 —— 表现就是"普通模式下不能滑屏滚动"。
+  /// 备用屏 `1049`（htop/vim/less 用它）才是可靠的全屏信号；`47` 是它的旧写法。
+  static final RegExp _interactiveOn = RegExp(r'\x1b\[\?(?:1049|47)h');
+  static final RegExp _interactiveOff = RegExp(r'\x1b\[\?(?:1049|47)l');
 
   /// 入站数据的唯一入口：先把"滚动尾巴 + 本块"拼起来扫私有模式，再交给终端渲染。
   void _writeToTerminal(String data) {
@@ -242,7 +247,9 @@ class TerminalSessionController extends ChangeNotifier {
         // 失败，界面还只显示误导性的"连接超时"（第 26 轮定位到）。
         // 所以这里**短暂等待**回调贴上；确实没有页面附着（后台会话）才拒绝。
         onHostKey: (challenge) async {
+          debugPrint('JuiceSshHandler: 主机密钥质询到达，回调已挂=${onHostKeyChallenge != null}');
           final handler = await _awaitHandler(() => onHostKeyChallenge);
+          debugPrint('JuiceSshHandler: 等待 5 秒后回调已挂=${handler != null}');
           if (handler == null) return HostKeyVerdict.rejected;
           return handler(challenge);
         },
