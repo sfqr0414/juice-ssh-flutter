@@ -52,6 +52,10 @@ Finder finderFor(String label, {bool fab = false}) {
   } catch (_) {}
   f = find.text(label);
   if (f.evaluate().isNotEmpty) return f;
+  // 第 336 轮教训：选择器里的选项常是复合文案（标题 + 地址副标题），
+  // 精确 find.text 匹配不到，这里加一层包含匹配兜底。
+  f = find.textContaining(label);
+  if (f.evaluate().isNotEmpty) return f;
   if (fab) return find.byType(FloatingActionButton);
   return f;
 }
