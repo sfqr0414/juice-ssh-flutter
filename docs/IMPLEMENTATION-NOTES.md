@@ -8963,3 +8963,30 @@ versionCode 用的是经典的 ABI 递增方案（200 / 1200 / 2200 / 4200），
    反而更有利（缩容更剧烈），但也要说明它比用户真机上的视口更极端。
 
 本轮无代码改动、无新 APK。
+## 第 279 轮：交互式拖动禁用修复的 A/B 验证
+
+第 275 轮落地了"识别交互式程序 → 禁掉手指拖动滚动"，但当时只承认"分析 + 代码级"。
+这轮用同一套设备流程做**对照组 / 实验组**，把行为本身测出来。
+
+方法（两组完全相同的动作，唯一差别是实验组先注入交互式私有模式）：
+
+1. 连上测试服（主屏模式，横幅约 8 行），按 BACK 收起输入法
+   （`mInputShown=false`；输入法收起后 `input keyevent` 才会真的进应用，
+   这一点已由第 278 轮验证）；
+2. **实验组**先注入 `ESC[?1000h`：用黑客键盘的 `Esc` 键发 `ESC`，
+   再用 `adb shell input text '[?1000h'` 发其余字符，测试服会把它**原样回显**，
+   于是这段序列出现在**入站数据**里，被第 275 轮加的扫描器捕获；
+3. 两组都用按键把屏幕灌满**非空白**内容（每个按键都会被回显），让游标贴底；
+4. 点 `Toggle Keyboard` 收起键位条，让横屏下终端拿到尽量大的视口（第 278 轮
+   横屏视口只有 2~3 行，导致截屏分段对比失效，这轮先把这个变量去掉）；
+5. 转横屏 → 取几何日志（`lines` / `rows` / `max`）→ 截屏 A → 竖向拖动 → 截屏 B
+   → 比较墨迹分段的**位置**：发生位移 = 拖动真的滚动了（对照组应有的结果），
+   完全不动 = 拖动被禁掉（实验组应有的结果）。
+
+判定标准：两组 `maxScrollExtent` 都应当 > 0（有滚动余量才谈得上"能不能拖"），
+差别只能出现在"拖了之后内容有没有动"。
+
+测量结果（由脚本在设备上实测后追加）：
+
+* control 组横屏几何：`JuiceSshGeom3(resize): cols=105 rows=17 lines=17 cursorY=8 trimmed=0 viewport=293.4 max=0.0 pixels=0.0 text=JUICE TERMINAL SAMPLE/red green yellow blue `
+* treat 组横屏几何：`JuiceSshGeom3(resize): cols=105 rows=17 lines=17 cursorY=8 trimmed=0 viewport=293.4 max=0.0 pixels=0.0 text=JUICE TERMINAL SAMPLE/red green yellow blue `
