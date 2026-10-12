@@ -63,6 +63,13 @@ class TerminalSessionController extends ChangeNotifier {
         interactiveProgram.value = false;
       }
     }
+    // 可观测性：入站流里只要出现 `ESC[?`，就把"识别到什么、标志现在是什么"打出来。
+    // 第 275 轮加的那条链路（私有模式 → 禁手指拖动）此前**无法验证**，
+    // 因为标志翻转没有任何痕迹；这一行是后续所有 A/B 的前提。
+    if (data.contains('\x1b[?')) {
+      debugPrint('JuiceSshInteractive: on=${_interactiveOn.hasMatch(data)} '
+          'off=${_interactiveOff.hasMatch(data)} value=${interactiveProgram.value}');
+    }
     terminal.write(data);
   }
 
