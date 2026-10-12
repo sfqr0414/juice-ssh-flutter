@@ -95,7 +95,11 @@ class _TerminalPageState extends State<TerminalPage> {
   void _syncStatusBar() {
     if (!mounted) return;
     _appStatusBarColor = Theme.of(context).primaryColor;
-    final target = _controller.surfaceTheme.black;
+    // 状态栏底色取**终端配色自己的背景色**（就是 `TerminalView` 画出来的那块画布色），
+    // 于是状态栏与终端连成一片（用户要的"沉浸"）。
+    // 此前取的是 ANSI 0（`surfaceTheme.black`，比画布深一档 = `#073642` vs `#254E59`），
+    // 用户实测："状态栏就是比终端颜色深，要状态栏颜色和终端一致，沉浸"。
+    final target = _controller.surfaceTheme.background;
     if (_terminalStatusBarColor == target) return;
     _terminalStatusBarColor = target;
     // 底色深时用白色图标（原版该带内非底色像素只有 `(255,255,255)`）。
