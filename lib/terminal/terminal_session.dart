@@ -47,29 +47,38 @@ class TerminalSessionController extends ChangeNotifier {
   /// 所以只能在这里识别"有交互式程序在跑"，再由页面禁掉手指拖动滚动。
   final ValueNotifier<bool> interactiveProgram = ValueNotifier<bool>(false);
 
+  /// 入站数据的**滚动尾巴**（最近 24 个字符）。
+  ///
+  /// 必须要有它：实测（第 281 轮）交互式私有模式会被**分块**送达 —— 现场注入
+  /// `ESC[?1000h` 时，服务端回显把 `\x1b`、`[`、`?`、`1`、`0`、`0`、`0`、`h`
+  /// 拆进了不同的数据块，只看单块的 `data.contains('\x1b[?')` 永远匹配不上，
+  /// 于是第 275 轮那条"识别交互式程序 → 禁手指拖动"的链路对分块序列完全失效。
+  /// 拼接"尾巴 + 本块"再扫描，就能跨块命中；尾巴只保留 24 字符，不会误伤。
+  String _interactiveTail = '';
+
   static final RegExp _interactiveOn =
       RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)h');
   static final RegExp _interactiveOff =
       RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)l');
 
-  /// 入站数据的唯一入口：先扫私有模式，再交给终端渲染。
+  /// 入站数据的唯一入口：先把"滚动尾巴 + 本块"拼起来扫私有模式，再交给终端渲染。
   void _writeToTerminal(String data) {
-    if (data.contains('\x1b[?')) {
-      final enters = _interactiveOn.hasMatch(data);
-      final leaves = _interactiveOff.hasMatch(data);
+    final window = _interactiveTail + data;
+    if (window.contains('\x1b[?')) {
+      final enters = _interactiveOn.hasMatch(window);
+      final leaves = _interactiveOff.hasMatch(window);
       if (enters && !interactiveProgram.value) {
         interactiveProgram.value = true;
       } else if (leaves && !enters && interactiveProgram.value) {
         interactiveProgram.value = false;
       }
+      // 可观测性：出现私有模式就把"识别到什么、标志现在是什么"打出来，
+      // 这是后续 A/B 的前提（此前标志翻转没有任何痕迹）。
+      debugPrint('JuiceSshInteractive: on=$enters off=$leaves '
+          'value=${interactiveProgram.value}');
     }
-    // 可观测性：入站流里只要出现 `ESC[?`，就把"识别到什么、标志现在是什么"打出来。
-    // 第 275 轮加的那条链路（私有模式 → 禁手指拖动）此前**无法验证**，
-    // 因为标志翻转没有任何痕迹；这一行是后续所有 A/B 的前提。
-    if (data.contains('\x1b[?')) {
-      debugPrint('JuiceSshInteractive: on=${_interactiveOn.hasMatch(data)} '
-          'off=${_interactiveOff.hasMatch(data)} value=${interactiveProgram.value}');
-    }
+    _interactiveTail =
+        window.length > 24 ? window.substring(window.length - 24) : window;
     terminal.write(data);
   }
 
