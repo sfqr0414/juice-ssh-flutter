@@ -110,6 +110,22 @@ class _TerminalPageState extends State<TerminalPage> {
   /// `Toggle Keyboard` 键维护的软键盘显隐状态（理由见 `_toggleSoftKeyboard`）。
   bool _softKeyboardVisible = false;
 
+  /// 弹窗键盘（原版 `hacker_keyboard.xml` 那两行键位）是否可见。
+  ///
+  /// 原版语义有内置教程为证：中文「点击终端以显示弹出键盘，该键盘拥有常用的特殊按键
+  /// (比如 Ctrl、方向键等)」/ 英文 "Tap the terminal to bring up a popup keyboard
+  /// with all the normally hard to find characters (ctrl, arrows etc)" ——
+  /// 也就是说**点终端**才是弹窗键盘的开关。此前键位条常显、点终端毫无反应，
+  /// 就是用户实测的第 2 条「终端点击没有切换黑客键盘弹出/隐藏状态」。
+  bool _popupKeyboardVisible = true;
+
+  /// 本次按压的起始时刻：只有"短按"才算轻点（用户实测第 2 条要求
+  /// 点终端切换弹出键盘，但长按是弹上下文菜单，绝不能同时切换键盘）。
+  DateTime? _pressStartedAt;
+
+  /// 上下文菜单是否正开着（用于屏蔽菜单期间那次抬手被当成轻点）。
+  bool _contextMenuOpen = false;
+
   /// 上一次打出的几何诊断行，用来只在数值变化时输出（定位终端顶部偏移用）。
   String? _lastGeometry;
 
@@ -130,6 +146,12 @@ class _TerminalPageState extends State<TerminalPage> {
 
   /// 终端控件最近一次布局的逻辑尺寸，用于像素 → 单元格换算。
   Size? _terminalLayoutSize;
+
+  /// 终端控件左上角在屏幕上的逻辑 y（构建时刷新），用于和首行墨迹对账。
+  double? _terminalBoxTop;
+
+  /// Scaffold 之外读到的真实状态栏高度（构建时刷新），诊断用。
+  double? _outerTopInset;
 
   /// 首次进终端时叠在最前面的教程层。
   ///
@@ -190,10 +212,12 @@ class _TerminalPageState extends State<TerminalPage> {
       debugPrint(
         'JuiceSshGeom(delayed): box=${_terminalLayoutSize?.width.toInt()}x'
         '${_terminalLayoutSize?.height.round()} '
+        'boxTop=${_terminalBoxTop?.toStringAsFixed(1)} '
         'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
         'lines=${terminal.buffer.lines.length} '
         'cursorY=${terminal.buffer.absoluteCursorY} '
         'fontSize=${_controller.textStyle.fontSize} '
+        'popupKeys=$_popupKeyboardVisible '
         'scrollback=${terminal.buffer.lines.length - terminal.viewHeight}',
       );
     });
@@ -513,7 +537,9 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 第 31 轮把这 8 项补齐之后，ActionBar 上那个当初作为可达性兜底的溢出按钮
   /// 已删除，终端页的 chrome 与原版一致（原版终端页只有长按菜单，没有溢出菜单）。
   Future<void> _showTerminalMenu({Offset? at}) async {
+    _contextMenuOpen = true;
     final action = await _showContextMenu(at);
+    _contextMenuOpen = false;
 
     if (!mounted || action == null) return;
 
@@ -726,6 +752,12 @@ class _TerminalPageState extends State<TerminalPage> {
   Widget build(BuildContext context) {
     final settings = SettingsController.instance;
     final position = settings.terminalKeyboardPosition;
+    // **真正的状态栏高度**。必须在这里（Scaffold 之外）取：Scaffold 会给 body 的
+    // MediaQuery 里再叠加一个 AppBar 高度，body 内读到的 `padding.top` 是
+    // 状态栏 + 56 —— 本页实测 104.8dp（见 JuiceSshGeom 的 padTop），
+    // 而真正的状态栏只有 48.8dp。
+    final topInset = MediaQuery.paddingOf(context).top;
+    _outerTopInset = topInset;
 
     return PopScope(
       canPop: false,
@@ -774,18 +806,26 @@ class _TerminalPageState extends State<TerminalPage> {
           children: [
             Column(
               children: [
-                if (position == 0)
+                if (position == 0 && _popupKeyboardVisible)
                   // 终端页是 `extendBodyBehindAppBar: true`（body 从 y=0 开始），
                   // 键位条放到终端上方时会被状态栏盖掉上半截 —— 用户报的
-                  // "Above Terminal 布局没有显示全"。这里补上状态栏高度。
+                  // "Above Terminal 布局没有显示全"。这里补上**真正的状态栏高度**
+                  // （`topInset`，不是 body 内被 Scaffold 加过 AppBar 高度的那个值）。
                   Padding(
-                    padding: EdgeInsets.only(
-                      top: MediaQuery.paddingOf(context).top,
-                    ),
+                    padding: EdgeInsets.only(top: topInset),
                     child: _buildKeyRow(),
                   ),
-                Expanded(child: _buildBody()),
-                if (position == 1) _buildKeyRow(),
+                Expanded(
+                  // 原版终端页的窗口从状态栏底边（y=128）开始，
+                  // `o_term.png` 实测第一行墨迹 y=137 = 128 + 9（字形在行内的偏移）。
+                  // 本复刻是 edge-to-edge（body 真的从 y=0 起），所以要自己让出状态栏，
+                  // 否则第 0 行会被状态栏盖掉（实测首行墨迹落在 128）。
+                  child: Padding(
+                    padding: EdgeInsets.only(top: topInset),
+                    child: _buildBody(),
+                  ),
+                ),
+                if (position == 1 && _popupKeyboardVisible) _buildKeyRow(),
                 // 选择提示条在**快捷键盘的底端**（屏幕最下方），与原版一致。
                 // 此前它挂在 Column 最前面，跑到了屏幕顶端（用户报的第 1 条）。
                 if (_selectingStart || _selectingEnd) _buildSelectionBanner(),
@@ -894,6 +934,7 @@ class _TerminalPageState extends State<TerminalPage> {
     _longPressOrigin = event.position;
     _swipeStart = event.position;
     _swipeStartAt = event.timeStamp;
+    _pressStartedAt = DateTime.now();
     // 两段式选择期间不弹上下文菜单：把长按/拖动让给 `TerminalView` 自己的选区识别。
     // 否则用户按提示"拖到选区起点"时只会反复弹出菜单，永远选不中（用户报的第 5 条）。
     if (_selectingStart || _selectingEnd) {
@@ -907,9 +948,13 @@ class _TerminalPageState extends State<TerminalPage> {
     final token = ++_longPressToken;
     Future<void>.delayed(_longPressTimeout, () {
       if (!mounted || token != _longPressToken) return;
+      final at = _longPressOrigin;
+      // 长按已经弹菜单了：把原点清掉，否则抬手时位移仍 ≤ slop，
+      // 会被"轻点终端 = 切换弹出键盘"那条分支再吃一次（菜单背后键盘乱跳）。
+      _longPressOrigin = null;
       // 长按期间别让这次按压把软键盘顶出来。
       _terminalFocus.unfocus();
-      _showTerminalMenu(at: _longPressOrigin);
+      _showTerminalMenu(at: at);
     });
   }
 
@@ -927,8 +972,10 @@ class _TerminalPageState extends State<TerminalPage> {
 
   void _onTerminalPointerUp(PointerUpEvent event) {
     final origin = _longPressOrigin;
+    final elapsed = _pressElapsed;
     final selecting = _selectingStart || _selectingEnd;
     _cancelLongPress();
+    _pressStartedAt = null;
     if (selecting) {
       _swipeStart = null;
       _swipeStartAt = null;
@@ -938,6 +985,18 @@ class _TerminalPageState extends State<TerminalPage> {
       if (origin == null || (event.position - origin).distance <= _longPressSlop) {
         _advanceScreenCopy();
       }
+      return;
+    }
+    // 轻点终端 = 弹出键盘开关（原版教程："点击终端以显示弹出键盘"）。
+    // 三个条件缺一不可：本次按压没被长按消费掉、位移在 slop 内、且按住时间
+    // 没到长按阈值 —— 否则长按弹菜单时会顺带把键位条也翻掉。
+    if (origin != null &&
+        !_contextMenuOpen &&
+        (event.position - origin).distance <= _longPressSlop &&
+        elapsed <= _longPressTimeout) {
+      _swipeStart = null;
+      _swipeStartAt = null;
+      setState(() => _popupKeyboardVisible = !_popupKeyboardVisible);
       return;
     }
     _handleHorizontalSwipe(event);
@@ -967,7 +1026,17 @@ class _TerminalPageState extends State<TerminalPage> {
     _controller.sendText(sequence);
   }
 
-  void _onTerminalPointerCancel(PointerCancelEvent event) => _cancelLongPress();
+  void _onTerminalPointerCancel(PointerCancelEvent event) {
+    _cancelLongPress();
+    _pressStartedAt = null;
+  }
+
+  /// 本次按压已持续多久（没有按压时为零）。
+  Duration get _pressElapsed {
+    final started = _pressStartedAt;
+    if (started == null) return Duration.zero;
+    return DateTime.now().difference(started);
+  }
 
   void _cancelLongPress() {
     _longPressToken++;
@@ -1014,16 +1083,29 @@ class _TerminalPageState extends State<TerminalPage> {
               if (constraints.maxHeight > 0) {
                 final terminal = _controller.terminal;
                 if (terminal.viewHeight > 0) {
+                  // 直接量控件自己在屏幕上的位置：`boxTop` 是逻辑像素，
+                  // 乘 dpr 就是物理像素，用来和"首行墨迹 y=241"对账。
+                  final box = context.findRenderObject() as RenderBox?;
+                  final global =
+                      box == null ? Offset.zero : box.localToGlobal(Offset.zero);
+                  _terminalBoxTop = global.dy;
+                  final mq = MediaQuery.of(context);
                   final line =
                       'JuiceSshGeom: widget=${constraints.maxWidth.toInt()}x'
                       '${constraints.maxHeight.round()} '
+                      'boxTop=${global.dy.toStringAsFixed(1)} '
                       'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
                       'cellH=~${(constraints.maxHeight / terminal.viewHeight).toStringAsFixed(2)} '
                       'bufferLines=${terminal.buffer.lines.length} '
                       'cursorY=${terminal.buffer.absoluteCursorY} '
                       'scrollback=${terminal.buffer.lines.length - terminal.viewHeight} '
                       'fontSize=${_controller.textStyle.fontSize} '
-                      'topInset=${MediaQuery.paddingOf(context).top.toStringAsFixed(1)}';
+                      'padTop=${mq.padding.top.toStringAsFixed(1)} '
+                      'outerTop=${_outerTopInset?.toStringAsFixed(1)} '
+                      'viewTop=${mq.viewPadding.top.toStringAsFixed(1)} '
+                      'insetsB=${mq.viewInsets.bottom.toStringAsFixed(1)} '
+                      'dpr=${mq.devicePixelRatio.toStringAsFixed(3)} '
+                      'screenH=${mq.size.height.toStringAsFixed(1)}';
                   if (line != _lastGeometry) {
                     _lastGeometry = line;
                     debugPrint(line);
@@ -1039,15 +1121,31 @@ class _TerminalPageState extends State<TerminalPage> {
                 onPointerMove: _onTerminalPointerMove,
                 onPointerUp: _onTerminalPointerUp,
                 onPointerCancel: _onTerminalPointerCancel,
-                child: TerminalView(
-                  _controller.terminal,
-                  controller: _terminalController,
-                  theme: _controller.surfaceTheme,
-                  textStyle: _controller.textStyle,
-                  focusNode: _terminalFocus,
-                  padding: EdgeInsets.all(margin.toDouble()),
-                  deleteDetection: true,
-                  keyboardType: TextInputType.text,
+                child: MediaQuery.removePadding(
+                  // xterm 的 `TerminalView` 把 `MediaQuery.of(context).padding`
+                  // 直接当成**终端内容**的内边距（xterm 4.0.0
+                  // `lib/src/terminal_view.dart:230` → `RenderTerminal.padding`）。
+                  // 而 Scaffold 交给 body 的 MediaQuery 里 `padding.top` 是
+                  // 状态栏 + AppBar 高度：本页实测 `padTop=104.8dp`
+                  // （48.8 + 56，见 JuiceSshGeom 日志），于是整块内容被下推
+                  // 104.8dp ≈ 275px —— 这就是用户报的"终端离顶端有距离"。
+                  // 实测首行墨迹 241px（原版 137px），差值 104px 与之吻合。
+                  // 原版终端铺满自己那块区域、本身不带系统栏内边距，这里清零。
+                  context: context,
+                  removeTop: true,
+                  removeBottom: true,
+                  removeLeft: true,
+                  removeRight: true,
+                  child: TerminalView(
+                    _controller.terminal,
+                    controller: _terminalController,
+                    theme: _controller.surfaceTheme,
+                    textStyle: _controller.textStyle,
+                    focusNode: _terminalFocus,
+                    padding: EdgeInsets.all(margin.toDouble()),
+                    deleteDetection: true,
+                    keyboardType: TextInputType.text,
+                  ),
                 ),
               );
             },
