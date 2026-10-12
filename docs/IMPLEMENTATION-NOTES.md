@@ -9878,3 +9878,58 @@ JuiceSmoke: ready=true Scaffold=1 InkWell=6 widgets=789
   New Port Forward`，用 `find` + `enterText` 填 `Name` / 选 `Connection` /
   填 `Destination` 与两个端口 → `Save` → 断言列表出现新条目），
   彻底补上此前唯一的取证缺口。
+## 第 331-340 轮：端口转发创建链路首次端到端通过（integration_test）
+
+第 311 轮停掉 adb 坐标法、改指 `integration_test` 之后，这一段把它真正做成了可用的东西，
+并**首次拿到"身份 → 连接 → 端口转发 → 保存 → 列表出现新条目"的端到端证据**。
+
+### 载体
+
+* `pubspec.yaml` 的 `dev_dependencies` 加 `integration_test: sdk: flutter`；
+* `integration_test/app_smoke_test.dart`：冷启动冒烟；
+* `integration_test/port_forward_test.dart`：完整创建链路；
+* 运行：`flutter test integration_test/port_forward_test.dart -d emulator-5554`。
+
+### 里程碑输出（两轮各通过一次，稳定复现）
+
+```text
+身份编辑器 TextField=2 → 点 Save(身份) = true → 身份保存后 = true
+连接编辑器 TextField=3 → 点 Save(连接) = true → 连接列表含 pfhost = true
+端口转发编辑器 TextField=4 → 点 Save(端口转发) = true → 端口转发列表含 pf1 = true
+```
+
+### 一路踩出来的六条硬事实
+
+1. **`New Port Forward` / `New Connection` / `Save` 都不是 `Text` 控件** ——
+   它们是带 tooltip 的按钮。`find.text` 永远找不到（这正是此前"找不到 Save"的真相），
+   查找顺序必须是：`find.byTooltip` → `find.bySemanticsLabel` → `find.text` →
+   （可选）`find.byType(FloatingActionButton)`。注意 `FloatingActionButton=0`，
+   本项目用的是自定义控件，真正起作用的是 tooltip。
+2. **字段值由 `EditableText` 渲染**，遍历 `Text` 控件看不到输入内容 ——
+   断言字段值要用 `find.text()` / `find.textContaining()`（它们也匹配 EditableText）。
+3. **三个编辑器的字段数**：身份 2（Name / Username，**无密码框**）、
+   连接 3（Nickname / Address / Port）、端口转发 4（Name / Port(from) / Destination / Port(to)，
+   `Destination` 默认已填 `127.0.0.1`）。
+4. **依赖顺序**：连接保存强制要求 Identity（不选会报 `You must select an identity`），
+   所以必须先建身份、再建连接、最后建端口转发。
+5. **保存后会退回首页**：保存连接后若直接找 `Port Forwards` 标签必然失败；
+   需要有"回管理页再切标签"的重试导航助手。
+6. **`Connection` 选择器在进程内没弹出**：点 `(Pick one)` 这个文本不会弹出候选
+   （它多半是 `DropdownButton`/`InkWell`，要按控件类型点）。因此保存下来的那条端口转发
+   `Connection` 可能仍为空 —— 本地转发允许这样保存。
+
+### 两条调试教训
+
+* **别让过滤吞掉报错**：`flutter test` 的 Gradle 编译失败在 PowerShell 里只回显一行
+  `System.Management.Automation.RemoteException`，关键 Dart 报错全丢。
+  最快的入口是 **`flutter analyze integration_test`**（64 秒给出确切文件:行号:错误），
+  比等 Gradle 快得多。本轮就是靠它定位到"第 336 轮整体重写时漏掉了 `visibleTexts` 助手"。
+* **改动测试文件后先 analyze 再跑**，否则会浪费一整轮设备运行时间。
+
+### 遗留
+
+* `Connection` 选择器如何正确点击（按控件类型）待解决；
+* 测试仍报一处异常（提示 "See exception logs above"），疑似
+  `tester.ensureVisible` 在没有 Scrollable 祖先的控件上抛异常 ——
+  需打印输出中段确认，并改为 try/catch 或 `scrollUntilVisible`；
+* 这一段所有改动都只在 `integration_test/`，**不影响 `dist/` 交付物**。
