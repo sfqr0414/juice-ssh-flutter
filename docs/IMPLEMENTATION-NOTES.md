@@ -9232,3 +9232,66 @@ final leaving = offAt > onAt;   // 最后出现的是退出序列
   菜单项坐标；
 * 端口转发的**创建-运行**链路（目前只有屏幕与列表级证据）；
 * 记录约定：本轮无代码改动、无新交付物，`dist/` 仍是第 285 轮四份。
+## 第 286-288 轮：设置入口的两次否证、源码定位，以及设置/代码片段/主题的交互级取证
+
+### 第 286 轮：`More options` 里没有设置（两次否证）
+
+先试连接列表：点右上 `More options`（x=1032 y=201）后菜单里**只有 `New Group`**，
+没有 `Settings`。再逐页试（Port Forwards / Connections / Identities）：三页页面上
+都不含 `Settings`，且点 `More options` 后 dump 到的仍是页面本身、没有弹出菜单。
+结论：**"用坐标点溢出菜单进设置"这条探法不成立**，不要继续猜坐标。
+
+方法教训：我每轮 dump 后都发一次 BACK 想收菜单，结果在 Identities 那步把应用
+整个退出（dump 到的是 Android 桌面）。以后发 BACK 前必须先 dump 确认
+当前有没有 `Back` 节点、应用是否仍在前台。
+
+顺手的正面证据：Connections 页 `Frequently Used` 里是
+`10.0.2.2 — Connected 68 times` —— **连接使用次数统计是工作的**
+（68 次正是这些轮反复连测试服的累计）。
+
+### 第 287 轮：改从源码定位入口（结论可复用）
+
+黑盒试坐标两轮无果后改为读源码，一次定位：
+
+* `lib/screens/settings_screen.dart:56` `class SettingsScreen`；
+* `lib/screens/main_screen.dart:129` `_openSettings()` → push `SettingsScreen`；
+* `lib/screens/main_screen.dart:365-370` 唯一的调用点是一张**首页卡片**：
+  `_HomeCard(title: s('menu_settings'), subtitle: s('personalise_your_sessions'),
+  icon: 0xF085 /* icon_cogs */, onTap: _openSettings)`。
+
+所以设置入口是**首页 `Settings` 卡片**，不在任何溢出菜单里 —— 前两轮失败的真正原因
+就是这个（我每次都先点 `Manage Connections` 进了地址簿）。首页卡片顺序为：
+`Quick Connect` → `Frequently Used` → `Manage Connections` → `Unlock Pro` →
+**`Settings`** → `Help` → `Plugins` → `Tech Library`。
+
+工具脚本教训：`$home` 在 PowerShell 是**只读自动变量**（等于用户目录），
+我拿它当 dump 结果变量，赋值直接报错、后续全用它当数据源，整轮空转。
+脚本里禁用 `$home` / `$host` 这类名字。
+
+### 第 288 轮：设置 / 代码片段 / 主题的**交互级**取证（全量）
+
+首页（8 张卡）：`Quick Connect`、`Frequently Used`、`Manage Connections`、
+`Unlock Pro Features`、`Settings`、`Help`、`Plugins`、`Tech Library`。
+
+设置页（点 `Settings` 卡片）：
+
+* `Dark Theme — Automatic (system default)`
+* `General`（分组）、`Manage Snippets`、`Amazon EC2 Link`
+* `Security Lock — Lock app after 5min inactivity OFF`、`App Security`（分组）、
+  `Clear known hosts`、`SSH Agent Forwarding — OFF`
+* `Theme / Colors — Solarized Dark`、`Font — Cascadia Code Mono`
+* `Terminal`（分组）、`Font size`、`Terminal Margin`、`Horizontal Swipe`
+
+每一项都带**当前生效值**（Solarized Dark / Cascadia Code Mono / OFF），
+说明主题、字体、安全锁这些状态确实接通了，不是空壳。
+
+代码片段页（点 `Manage Snippets`）：标题 `Snippets`、`New Snippet` 浮动按钮、
+真实条目 `Restart nginx — sudo systemctl restart nginx`。
+
+主题切换（点 `Dark Theme`）：弹出 `Light` / `Dark`（含 `Dismiss` / `CANCEL`）。
+
+`logcat` 过滤 `E/flutter` / `Unhandled Exception` / `overflowed`：全空。
+
+至此连接管理 / 端口转发 / 身份 / 代码片段 / 主题 / 设置六块都有了交互级证据。
+剩余待取证：**端口转发的创建-运行链路**（目前只有列表与 FAB 级证据）。
+本轮无代码改动、无新交付物；`dist/` 仍是第 285 轮四份。
