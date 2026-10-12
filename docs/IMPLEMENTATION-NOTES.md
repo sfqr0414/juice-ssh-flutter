@@ -9836,3 +9836,45 @@ versionName 3.2.2 / minSdk 26 / targetSdk 29 未变。
 
 * 补 `integration_test/` 载体（用户第二个选择）；
 * 四条真机复测与真机性能数据仍等用户。
+## 第 328-330 轮：UI 端到端验证载体落地（integration_test）
+
+第 311 轮停掉 adb 坐标法时写明"正路是 `flutter drive` / `integration_test`"，这几轮把它落地了。
+
+### 做了什么
+
+1. `pubspec.yaml` 的 `dev_dependencies` 增加 `integration_test: sdk: flutter`
+   （`flutter pub get` 变更 6 个依赖）；
+2. 新建 `integration_test/app_smoke_test.dart`：用
+   `IntegrationTestWidgetsFlutterBinding.ensureInitialized()` + `app.main()` 在**应用进程内**
+   驱动 UI，用 `WidgetTester` 直接定位控件，与坐标、软键盘、BACK 全都无关；
+3. 断言刻意宽松（文案随语言/主题变化），只确认"界面真的起来了、关键入口存在、
+   组件树不是空的"，并 `debugPrint` 出计数便于观察。
+
+### 首跑失败与修复（教训）
+
+第一次运行：
+`JuiceSmoke: Scaffold=0 InkWell=0 widgets=14` → `Some tests failed`。
+
+原因：**我在应用异步启动（安全存储 / 主题 / 保险库初始化）完成前就断言了**，
+那时树里只有一个 14 个组件的空架子。修法：把单次 `pumpAndSettle(8s)` 改成
+**轮询等待**（最多 30 秒 = 60 × 500ms，等到 `Scaffold` 出现且可点击卡片 > 3）。
+
+### 通过（第 330 轮）
+
+```text
+Installing build\app\outputs\flutter-apk\app-debug.apk...   2,725ms
+JuiceSmoke: ready=true Scaffold=1 InkWell=6 widgets=789
+00:05 +1: All tests passed!
+```
+
+顺带排查：首次运行时出现过一条 `Error: ADB exited with exit code 1`（测试仍继续执行），
+本轮未复现（安装仅 2.7 秒），判定为安装环节偶发。
+
+### 意义与待办
+
+* 端口转发"填表 → 保存 → 运行"这类验证，从此有了**真正可用**的手段：
+  进程内定位控件并操作，不受写死坐标、聚焦自动滚动、软键盘遮挡、BACK 误退的影响；
+* 待办：把该载体扩到端口转发流程（进入 `Manage Connections → Port Forwards →
+  New Port Forward`，用 `find` + `enterText` 填 `Name` / 选 `Connection` /
+  填 `Destination` 与两个端口 → `Save` → 断言列表出现新条目），
+  彻底补上此前唯一的取证缺口。
