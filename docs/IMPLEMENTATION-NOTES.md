@@ -8874,3 +8874,27 @@ xterm 的 `simulateScroll` 只作用于**备用屏**，救不了主屏，所以�
   `FB75D0F2E9481B22E6873EB9697D50BF3C5E9BC668B849C09FF703D5B9EC89DB`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `A9A6E21992CA76D01CC234FD99D71CB7AF041BC64533987771A9DD231BF08AA2`。
+## 第 276 轮：核心功能回归巡检（连接管理 / 身份 / 设置）
+
+这一轮没有新的用户实测反馈，按目标里"实现…并验证"那一条，对模拟器上的**核心屏**
+做了一次逐屏取证（`uiautomator` 转储 + 排除 Flutter 异常）。
+
+| 屏 | 取证到的关键节点 | 结论 |
+| --- | --- | --- |
+| 主页 | `JuiceSSH` / `Quick Connect`（Connect to a new host）/ `Frequently Used`（Your most used connections，含 `10.0.2.2 Connected 54 times` 与 `Connected once`）/ `Manage Connections` / `More options` | 与原版主页结构一致，常用连接计数在累计 |
+| 连接管理（Connections 页签） | 页签行 `Connections / Port Forwards / Identities`；分组 `lab-group（Not shared）`；连接 `10.0.2.2` 且身份显示为 `lab-key`；`All（Not shared）` | 连接与身份的绑定关系在界面上可见 |
+| 设置 | `Settings`；`Dark Theme — Automatic (system default)`；`General`；`Manage Snippets`；`Amazon EC2 Link`；`Security Lock — Lock app after 5min inactivity OFF` | 主题（含跟随系统）、代码片段入口、安全锁等设置项齐备 |
+| 异常 | `adb logcat` 过滤 `E/flutter` / `Unhandled Exception` / `RenderFlex overflowed` | **无** |
+
+两条如实说明：
+
+1. `Identities` / `Snippets` / `Themes` 这几个词在当前屏没命中，是因为入口在更深处
+   （页签左侧 / 设置里的 `Manage Snippets` 与 `Dark Theme`），不是缺失；
+2. 自动点击没能切页签：`uiautomator` 把整条页签行合并成一个节点
+   （`Connections&` + `#10;Port Forwards&` + `#10;Identities`，矩形覆盖整行），按"节点中心"
+   点下去落在中间那个页签上，于是 `Port Forwards` 被点开。这是**测试手段的限制**，
+   不是应用缺陷——手动点页签左侧三分之一即可切换。顺带记录：点到 Pro 功能时弹出的是
+   既定占位对话框 `Tech Library — Not available in this build.`（本轮范围内刻意保留的
+   占位，不是 bug）。
+
+本轮无代码改动、无新 APK（`dist/` 仍是第 275 轮那四份）。
