@@ -927,19 +927,26 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
               ),
             ),
             const SizedBox(height: 10),
-            JuiceFormTextField(
-              controller: _host,
-              height: 45,
-              fontSize: 18,
-              // 这一框在原版是**聚焦**态：下划线是 2dp 的 `accentBold`
-              // （实测 y 1277..1281 = 5px，x 135..957，颜色 (213,186,49)），
-              // 而编辑器里的输入框是未聚焦态的 1dp `#666666`。
-              underlineColor: palette.accentBold,
-              underlineHeight: 2,
-              // 原版不自动聚焦：实测打开后 3 秒它的窗口仍是 `[28,849][1052,1616]`
-              // 居中状态，说明没有弹出输入法（有 IME 时窗口会被顶起）。
-              onSubmitted: (_) => _submit(),
-              hintText: '[username@]hostname[:port]',
+            // 字段框在原版是 `[125,1182][968,1300]`（节点实测），左边比同一对话框里的
+            // 复选框行（`[112,1326][968,1410]`）多缩进 **13px ≈ 5dp**；克隆此前两行
+            // 左边界都是 111，于是下划线比原版宽 16px（克隆 838px、原版 823px）。
+            // 这里补上这 5dp，只动左边界（右边界原本吻合）。
+            Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: JuiceFormTextField(
+                controller: _host,
+                height: 45,
+                fontSize: 18,
+                // 这一框在原版是**聚焦**态：下划线是 2dp 的 `accentBold`
+                // （实测 y 1277..1281 = 5px，x 135..957，颜色 (213,186,49)），
+                // 而编辑器里的输入框是未聚焦态的 1dp `#666666`。
+                underlineColor: palette.accentBold,
+                underlineHeight: 2,
+                // 原版不自动聚焦：实测打开后 3 秒它的窗口仍是 `[28,849][1052,1616]`
+                // 居中状态，说明没有弹出输入法（有 IME 时窗口会被顶起）。
+                onSubmitted: (_) => _submit(),
+                hintText: '[username@]hostname[:port]',
+              ),
             ),
             const SizedBox(height: 10),
             JuiceCheckRow(

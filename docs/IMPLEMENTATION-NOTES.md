@@ -7285,3 +7285,56 @@ contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `B0E8F27366065B5145279C3989C7A6F0A64400ACA2327F0713958C8E84E33524`。
+## 第 251 轮：Quick Connect 对话框——字段左内缩补齐 5dp
+
+### 一、两侧都是对话框，都能从首页卡片进入
+
+克隆 `lib/screens/main_screen.dart` 的 `_QuickConnectDialog` ↔ 原版
+`com.sonelli.util.QuickConnectPrompt`。首页都有 `Quick Connect` 卡片
+（克隆节点 `[42,317][1038,501]`），点它即可打开。原版侧事后 `Back`×2 + `Home`，
+确认 `mCurrentFocus` 回到 `…nexuslauncher/NexusLauncherActivity`。
+
+### 二、节点对照：对话框整体吻合
+
+| 元素 | 原版 `qc_orig.png` | 克隆 `qc_clone2.png` |
+|---|---|---|
+| `SSH`（类型选中项） | `[253,1051][372,1156]` | `[251,1072][969,1135]` |
+| `[username@]hostname[:port]`（字段框/提示） | `[125,1182][968,1300]` | 字段框未暴露，见下 |
+| `Save connection for future use` | `[112,1326][968,1410]` | `[111,1326][969,1410]` |
+| `CANCEL` / `OK` | `[608,1421][810,1563]` / `[810,1421][978,1563]` | `[609,1421][812,1563]` / `[812,1421][980,1563]` |
+
+复选框行与两个按钮差 **1-2px**。
+
+### 三、唯一差异：字段框左边多缩进 13px（≈5dp）
+
+原版的**字段框**左边是 **125**，比同一对话框里的复选框行（**112**）多缩进 **13px ≈ 5dp**；
+克隆此前两者都是 **111**，于是下划线比原版宽：克隆 **121..958（838px）**、
+原版 **135..957（823px）**。这正是历史记录里那条「Quick Connect field left inset ~5dp
+／ 121..958 vs 135..957」——之前一直没改。
+
+改法：把该 `JuiceFormTextField` 包一层 `Padding(padding: EdgeInsets.only(left: 5))`，
+只动左边界（右边界原本就吻合）。
+
+### 四、设备复验
+
+| 图 | 下划线（颜色 (88,110,117) 的连续段） | 宽 |
+|---|---|---|
+| 克隆修前 `qc_clone.png` | x 121..958 | 838 px |
+| **克隆修后 `qc_clone2.png`** | **x 134..958** | **825 px** |
+| 原版 `qc_orig.png` | x 135..957 | 823 px |
+
+左边界差 **1px**、右边界差 1px、宽差 2px（修前左边界差 14px、宽差 15px）。
+
+### 五、顺带更正一条注释里的数值
+
+`main_screen.dart` 该字段处原有注释写「下划线是 2dp 的 `accentBold`（实测 y 1277..1281
+= 5px，x 135..957，颜色 (213,186,49)）」。本轮实测：**两侧的下划线颜色都是 (88,110,117)**，
+行高为原版 y1277..1281（5 行）、克隆 y1274..1279（6 行）。颜色既然一致，就不构成对齐问题，
+但注释里的颜色值与该截图不符（应是另一种聚焦态的取值），已在注释旁注明本轮实测。
+
+`flutter analyze` 为 `No issues found!`。
+
+### 六、交付物
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `64712968949EE0C015514330CA6AC933496AB00554E59E47E71662989275CACC`。
