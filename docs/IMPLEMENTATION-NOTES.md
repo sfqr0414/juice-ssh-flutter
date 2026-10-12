@@ -7942,3 +7942,129 @@ sqlite3 的引号被 adb shell 吃了两轮），要么 painting context 给的 
   污染成 3511ms，这两项都**不作为性能证据**；模拟器同类构建跨时间还会漂移
   （1240ms → 1965ms），跨构建的绝对值对比不可靠。本轮所有结论都用可复现的
   字节/像素真值（sshd 收到的字节、红色像素计数、首行墨迹 y）。
+
+## 第 259 轮：用户第 1、2 条 —— 终端顶端偏移的真正根因 / 点终端切换弹出键盘
+
+用户本轮原话（两条）：
+
+1. 终端离顶端有距离
+2. 终端点击没有切换黑客键盘弹出/隐藏状态
+
+### 第 2 条：点终端切换弹出键盘（已修并验证）
+
+原版语义不是猜的，来自内置教程文案（`_arsc_strings.txt` 里中英两版都在）：
+
+* 中文：`点击终端以显示弹出键盘，该键盘拥有常用的特殊按键 (比如 Ctrl、方向键等)。向右滑动来启用/禁用自动补全 (在 IRC 中很有用)`
+* 英文：`Tap the terminal to bring up a popup keyboard with all the normally hard to find characters (ctrl, arrows etc). Swipe it right to enable/disable autocomplete (useful for IRC etc).`
+
+也就是说**点终端本身**才是弹出键盘（原版 `res/layout/hacker_keyboard.xml` 那两行键位）的
+开关；设置项 `Popup keyboard position`（`terminal:keyboard_position`）只决定它出现在
+终端之上还是之下。此前的复刻里键位条是**常显**的，点终端毫无反应。
+
+改法（`lib/terminal/terminal_page.dart`）：
+
+* 新增 `_popupKeyboardVisible`（默认 true —— 与原版抓到的状态一致，
+  见下面第 1 条里那张原版截图的键位条），`position == 0` / `position == 1`
+  两个分支都按它决定是否渲染键位条；
+* `_onTerminalPointerUp`：非选择状态且位移 ≤ `_longPressSlop`（18px）的**轻点**
+  切换它；明显的水平滑动仍走原来的 `onFling` 语义（向左/向右发那段按键序列）；
+* 长按弹出上下文菜单时**绝不能同时切换键位条**。第一版只做了"长按触发时把
+  `_longPressOrigin` 清空"，但设备实测（长按 900ms 后把弹层点掉：键位条仍然从
+  PRESENT 变成 ABSENT，几何日志里控件高度从 772 → 842，正好少了键位条那 70dp）
+  证伪了它。最终判据改成三个条件同时成立才算轻点：本次按压未被长按消费
+  （`_longPressOrigin != null`）、位移 ≤ `_longPressSlop`、
+  以及**按住时长 ≤ `_longPressTimeout`**，另外再加一道"上下文菜单正开着
+  （`_contextMenuOpen`）就不切换"。这样"短按切换、长按只弹菜单"是确定行为。
+
+设备验证（同一会话连续轻点终端 (540,500)，每次实时 dump 键位节点）：
+
+| 时刻 | 键位条节点 | 输入法 `mInputShown` |
+| --- | --- | --- |
+| 连上后未点击 | `y=2291 x=1012 [945,2245][1080,2337] Toggle Keyboard` | `false` |
+| 第一次轻点 | **ABSENT** | `true` |
+| 第二次轻点 | `y=1471 x=1012 [945,1425][1080,1517] Toggle Keyboard` | `true` |
+| 第三次轻点 | **ABSENT** | `true` |
+
+（第二次的 y 从 2291 变 1471，是因为软键盘此时弹出来了、可视区被压到 1333 以上；
+键位条本身仍贴在可视区底部。）弹出/隐藏可反复切换，与用户要的"切换状态"一致。
+
+### 第 1 条：终端离顶端有距离 —— 根因是 xterm 把 MediaQuery 的 padding 当成了自己的内边距
+
+这一条前两轮都没定性。这轮先给几何日志加了 `boxTop`，**直接量控件自己在屏幕上的位置**：
+
+```
+JuiceSshGeom: widget=411x820 boxTop=0.0 cols=50 rows=42 cellH=~19.52 bufferLines=42
+              cursorY=7 scrollback=0 fontSize=14.0 padTop=104.8 viewTop=0.0 dpr=2.625 screenH=890.3
+```
+
+`boxTop=0.0` 说明终端控件就在屏幕最顶端，**不是被谁推下去的**；
+而 `padTop=104.8` 配上 `viewTop=0.0` 就是线索：104.8 = 48.8 + 56
+（状态栏 48.8 + `kToolbarHeight` 56），Scaffold 往 body 的 MediaQuery 里
+叠加了一个标题栏的高度。
+
+去读 xterm 4.0.0 源码，`lib/src/terminal_view.dart:230`：
+
+```dart
+padding: MediaQuery.of(context).padding,
+```
+
+这个值径直进了 `RenderTerminal.padding`；绘制原点是
+`_lineOffset = -_scrollOffset + _padding.top`（`lib/src/ui/render.dart:379-381`），
+第 i 行画在 `i * charHeight + _lineOffset`（同文件 419 行）——
+于是**终端内容**被整体下推了 `104.8dp − scrollOffset`。
+按 dpr=2.625 换算：`(104.8 − 约 13) × 2.625 ≈ 241`，与实测首行墨迹 **241px** 吻合。
+
+改法：把 `TerminalView` 包一层 `MediaQuery.removePadding`，让 xterm 读到的
+`MediaQuery.padding` 归零（原版终端铺满自己那块区域，本身不带系统栏内边距）。
+
+修完再量：首行墨迹 `241 → 128`。而 128 正好是状态栏底边 —— 因为本复刻
+`targetSdk=36` 被 Android 15+ 强制 edge-to-edge，body 真的从 y=0 开始，
+第 0 行会被状态栏盖住；原版 `targetSdk=29`，**窗口本身就从状态栏底边 y=128 开始**
+（文档第 67 行早记过这个差异）。
+
+所以再加一层**真正的状态栏高度**：这个值必须在 `Scaffold` **之外**读，
+因为 body 里读到的 `padding.top` 已经被叠加成 104.8。实测 `outerTop=48.8`、
+`boxTop=48.8`（×2.625 = 128px，正好贴到状态栏底边）。
+顺带把 `position == 0`（Above Terminal）分支里那个同样用错的值也改成 `topInset`。
+
+最终逐像素对比（**同一状态**：键位条可见 + 软键盘弹出，这样才可比）：
+
+| 截图 | 首行墨迹 y | 说明 |
+| --- | --- | --- |
+| 原版 `o_term.png` | **137** | 窗口从 128 起，第 0 行字形在行内偏移 9px |
+| 复刻改前 `c_term.png` | 241 | 差 104px —— 用户报的就是这个 |
+| 只去掉 xterm padding（`t1_keys_on.png`） | 128 | 内容贴到控件顶端，但第 0 行被状态栏盖住 |
+| 再加状态栏内边距（`t3_keys_on.png`） | **135** | 与原版 137 差 **2px** |
+
+`t2_keys_off.png`（键位条隐藏 + 软键盘弹出）同为 **135**。
+顺带确认行距没有偏差：`widget=411x459 rows=27` → 行高 ≈ 17.0dp ≈ 44.6px，
+与原版实测的 44px 一致（此前文档里的"行距 44px"正是原版的量测值）。
+
+### 本轮的三处过程失误（如实记录）
+
+1. `flutter build apk --target-platform` 的合法值是 `android-x64`，我写成了
+   `android-x86_64`；而构建脚本里 `Select-String` 的过滤把这段报错整段吞了，
+   脚本"成功退出"、产物却根本没重建（APK 时间戳比源码还早，
+   我靠 SHA-256 与上一轮完全相同才发现）。此后构建脚本一律把完整输出落盘，
+   并在最后核对产物时间戳/哈希。
+2. PS 5.1 按 ANSI 读 `.ps1`，脚本里的 `•` 与中文会把引号吃掉并直接 ParserError，
+   验证脚本一律纯 ASCII。
+3. 前两轮把偏移判成"body 被下推 / 第 0 行被状态栏遮挡"，因此给整页加过
+   `MediaQuery.paddingOf().top` 内边距，实测首行墨迹反而被推到 374
+   （整体下移 48dp×2.625 = 126px）。那次改动在当时就是错的：根因在 xterm 内部，
+   页面级的 padding 只会把整块内容继续往下推。
+4. 新增的"轻点终端切键位条"第一版防误触不够（见上），是**设备验证把它抓出来的**：
+   长按之后键位条被翻掉一次。这里也说明"只改代码不跑设备"在本项目里不够用。
+
+### 交付物
+
+四份 APK（`--split-per-abi` 三套 ABI + fat），SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `59781BFC7BC7A8C008109BB2C7E724A2635732D611254AEC6C3FEDF9DAF9EF0C`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `2D984251BE6CD4BF2653DEE909B3C772CEE208A350331E4F4E5E93FF70F5C1BF`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `1E16421F08313F671375D0CEAD13C131A8AA7E07CB574375BF725D378DC2ADF9`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `093CD5046E0E2FFBD5EC1DE7A0BC90EDFD08870E40CFEFE3E88D3D4EF41FB714`。
