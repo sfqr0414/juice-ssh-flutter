@@ -26,9 +26,17 @@ Future<void> waitForHome(WidgetTester tester) async {
 }
 
 Future<bool> tapText(WidgetTester tester, String label) async {
+  // 轮询等待文本出现：切标签页/弹页面时控件可能还没挂载。
+  // 第 332 轮就是只 pump 了 800ms 就去找 FAB 的 "New Port Forward"，结果漏掉。
+  for (var i = 0; i < 20; i++) {
+    if (find.text(label).evaluate().isNotEmpty) {
+      break;
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+  }
   final f = find.text(label);
   if (f.evaluate().isEmpty) {
-    debugPrint('JuicePF 找不到文本: $label');
+    debugPrint('JuicePF 找不到文本: $label（等待 10 秒后仍未出现）');
     return false;
   }
   await tester.ensureVisible(f.first);
