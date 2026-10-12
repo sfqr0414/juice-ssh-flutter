@@ -7483,3 +7483,69 @@ y=1405  10.0.2.2 / juiceww      （新：Quick Connect juiceww@10.0.2.2:2222 保
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `DDDE92CCB482D3052689CCAC7A19CE29D54CD9C059C255725B531B2985F56708`。
+## 第 254 轮：用户报的第 4、5 条
+
+### 一、第 5 条：终端内容选不中 —— 根因是选择推进只挂在提示条上
+
+`_advanceScreenCopy()` 全文件**只有一个调用点**：选择提示条自己的
+`GestureDetector.onTap`（`terminal_page.dart:685-686`）。也就是说，点了
+「Copy (from screen)」之后，只有在**那条横幅**上点才会推进阶段，在终端正文上点毫无反应；
+而且选择期间 `_onTerminalPointerDown` 仍会排队长按菜单，把 `TerminalView` 自身的选区手势
+也挡掉了。用户「无法选中进行复制」正是这两点。
+
+改法：
+
+1. 选择期间 `_onTerminalPointerDown` 不再排队上下文菜单（只让已排队的回调作废，
+   并**保留** `_longPressOrigin`，抬起时要靠它区分轻点与拖动）；
+2. `_onTerminalPointerUp` 在选择期间把「轻点」（位移 ≤ `_longPressSlop` = 18px）推进到
+   下一阶段（起点 → 终点 → 复制），位移更大的拖动则交给 `TerminalView` 扩选。
+
+设备验证（本轮实测）：
+
+```
+长按终端      -> 菜单：Terminal / Copy (from screen) / Copy (whole session)
+点 Copy (from screen)
+提示条        -> "Drag the cursor to the start of your selection"
+轻点终端      -> "Now drag the cursor to the end of your selection"
+再轻点终端    -> SnackBar "Text copied to clipboard"
+```
+
+即两段式选择可以正常完成，剪贴板写入也已触发。
+
+### 二、第 4 条前半：Toggle Keyboard 弹不出键盘
+
+`_toggleSoftKeyboard()` 原来用 `_terminalFocus.hasFocus` 判断，而终端那个隐藏输入框
+**长期持有焦点**（用户手动把键盘划下去之后也一样），于是这个键只会走 `unfocus()` 分支、
+永远弹不出来。改为按「软键盘此刻是否真的可见」判断：
+
+```dart
+final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+```
+
+设备验证（`adb shell dumpsys input_method` 的 `mInputShown`）：
+
+| 时刻 | mInputShown |
+|---|---|
+| 点 `Toggle Keyboard` 之前 | `false` |
+| 点击之后 | **`true`** |
+
+**未验成的一半**：再点一次应收起键盘，实测仍是 `true`。键盘弹出后键位条的节点坐标仍是
+`[945,2245][1080,2337]`（和收起时一致），说明 Flutter 视图没有随输入法上移，点击很可能
+落在输入法上。下一轮补测：先用弹出状态下的实时节点坐标定位，或改在 AndroidManifest 里
+显式声明 `windowSoftInputMode="adjustResize"`。
+
+### 三、第 4 条后半：Above Terminal 布局显示不全
+
+根因清楚：终端页是 `extendBodyBehindAppBar: true`（body 从 y=0 开始，原版终端就是从状态栏
+底下铺开），而 `terminal:keyboard_position == 0`（Above Terminal）时键位条被放在
+`Column` 最前面，于是被状态栏盖掉上半截。改法：该分支给键位条补上
+`MediaQuery.paddingOf(context).top` 的上内边距。
+
+**尚未在设备上验证** —— 本轮进 Settings 找「Popup keyboard position」时该行在更下方、需要
+滚动，脚本没找到。下一轮补验（设置项 → Above Terminal → 重开终端，检查键位条节点的 y 是否
+≥ 状态栏高度 128px）。
+
+### 四、交付物
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `4655C014F34C69D3DC668CDBEC4F54B6B53AF110FF4F34EF7FAC9E8ED0C0866C`。

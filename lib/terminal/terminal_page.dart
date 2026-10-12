@@ -312,7 +312,11 @@ class _TerminalPageState extends State<TerminalPage> {
   // ---------------------------------------------------------- 键盘 --
 
   void _toggleSoftKeyboard() {
-    if (_terminalFocus.hasFocus) {
+    // 判断依据用"软键盘此刻是否真的可见"，而不是 `_terminalFocus.hasFocus`：终端那个
+    // 隐藏输入框通常一直持有焦点（用户手动把键盘划下去之后也一样），按焦点判断会让
+    // 这个键**只会收起键盘、永远弹不出来** —— 正是用户报的第 4 条。
+    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+    if (keyboardVisible) {
       _terminalFocus.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
@@ -662,7 +666,16 @@ class _TerminalPageState extends State<TerminalPage> {
             Column(
               children: [
                 if (_selectingStart || _selectingEnd) _buildSelectionBanner(),
-                if (position == 0) _buildKeyRow(),
+                if (position == 0)
+                  // 终端页是 `extendBodyBehindAppBar: true`（body 从 y=0 开始），
+                  // 键位条放到终端上方时会被状态栏盖掉上半截 —— 用户报的
+                  // "Above Terminal 布局没有显示全"。这里补上状态栏高度。
+                  Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.paddingOf(context).top,
+                    ),
+                    child: _buildKeyRow(),
+                  ),
                 Expanded(child: _buildBody()),
                 if (position == 1) _buildKeyRow(),
               ],
@@ -770,6 +783,14 @@ class _TerminalPageState extends State<TerminalPage> {
     _longPressOrigin = event.position;
     _swipeStart = event.position;
     _swipeStartAt = event.timeStamp;
+    // 两段式选择期间不弹上下文菜单：把长按/拖动让给 `TerminalView` 自己的选区识别。
+    // 否则用户按提示"拖到选区起点"时只会反复弹出菜单，永远选不中（用户报的第 5 条）。
+    if (_selectingStart || _selectingEnd) {
+      // 只让已排队的长按回调作废，**保留** `_longPressOrigin`：抬起时要靠它区分
+      // "轻点（推进选区阶段）"与"拖动（交给 TerminalView 扩选）"。
+      _longPressToken++;
+      return;
+    }
     final token = ++_longPressToken;
     Future<void>.delayed(_longPressTimeout, () {
       if (!mounted || token != _longPressToken) return;
@@ -788,7 +809,19 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   void _onTerminalPointerUp(PointerUpEvent event) {
+    final origin = _longPressOrigin;
+    final selecting = _selectingStart || _selectingEnd;
     _cancelLongPress();
+    if (selecting) {
+      _swipeStart = null;
+      _swipeStartAt = null;
+      // 轻点 = 推进两段式选择（起点 → 终点 → 复制）；拖动则交给 `TerminalView` 扩选。
+      // 此前只有提示条本身可点，终端区域点了毫无反应 —— 这就是"怎么都选不中"的原因。
+      if (origin == null || (event.position - origin).distance <= _longPressSlop) {
+        _advanceScreenCopy();
+      }
+      return;
+    }
     _handleHorizontalSwipe(event);
   }
 
