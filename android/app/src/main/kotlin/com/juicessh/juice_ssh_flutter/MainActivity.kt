@@ -76,6 +76,46 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // 状态栏底色：Flutter 侧的 SystemUiOverlayStyle.statusBarColor 在本机
+        // （API 36 + Flutter 3.47.7）不生效（Flutter 默认 edgeToEdge），直接设窗口属性则有效。
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "juicessh/system_ui",
+        ).setMethodCallHandler { call, result ->
+            if (call.method == "setStatusBar") {
+                // Dart 的 int 超过 32 位时会按 Long 编码（0xFFRRGGBB 必然超），
+                // 所以必须按 Number 取再截断 —— 用 argument<Int> 会拿到 null。
+                val color = (call.argument<Any>("color") as? Number)?.toInt() ?: 0
+                val lightIcons = call.argument<Boolean>("lightIcons") ?: false
+                android.util.Log.i(
+                    "JuiceSshStatusBar",
+                    "setStatusBar color=" + Integer.toHexString(color) + " light=" + lightIcons,
+                )
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                    val mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    window?.insetsController?.setSystemBarsAppearance(
+                        if (lightIcons) mask else 0,
+                        mask,
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    window?.decorView?.systemUiVisibility =
+                        if (lightIcons) android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR else 0
+                }
+                @Suppress("DEPRECATION")
+                window?.statusBarColor = color
+                @Suppress("DEPRECATION")
+                android.util.Log.i(
+                    "JuiceSshStatusBar",
+                    "after set: window.statusBarColor=" +
+                        Integer.toHexString(window?.statusBarColor ?: 0),
+                )
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
+
         val methodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             CHANNEL_NAME,

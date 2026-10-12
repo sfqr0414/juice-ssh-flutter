@@ -10,6 +10,7 @@ import 'package:xterm/xterm.dart';
 import '../app/i18n.dart';
 import '../app/juice_colors.dart';
 import '../app/settings_controller.dart';
+import '../app/system_ui.dart';
 import '../data/juice_database.dart';
 import '../data/models.dart';
 import '../ssh/ssh_service.dart';
@@ -76,6 +77,32 @@ class TerminalPage extends StatefulWidget {
 
 class _TerminalPageState extends State<TerminalPage> {
   late final TerminalSessionController _controller;
+
+  /// 终端页自己的状态栏底色（当前终端配色的 ANSI 0），以及离开时要交还的
+  /// 应用配色底色。
+  ///
+  /// **为什么不用 `systemOverlayStyle` 设底色**：设备实测（模拟器 API 36 +
+  /// Flutter 3.47.7）里 Flutter 侧 `statusBarColor` 不生效 —— 颜色探针（主题级设
+  /// 纯红、终端页设纯绿）截图后，主界面/通讯录/终端三个页面状态栏全是 Android
+  /// 主题里的黄色 `(240,210,53)`，红与绿都没出现；原因是 Flutter 默认使用
+  /// `SystemUiMode.edgeToEdge`。而直接设窗口属性有效：原版终端页实测 y0..127 =
+  /// `(7,54,66)` = 终端配色的 ANSI 0。详见 `lib/app/system_ui.dart`。
+  Color? _terminalStatusBarColor;
+  Color? _appStatusBarColor;
+
+  /// 把状态栏切成当前终端配色的 ANSI 0；颜色没变时不重复过通道。
+  void _syncStatusBar() {
+    if (!mounted) return;
+    _appStatusBarColor = Theme.of(context).primaryColor;
+    final target = _controller.surfaceTheme.black;
+    if (_terminalStatusBarColor == target) return;
+    _terminalStatusBarColor = target;
+    // 底色深时用白色图标（原版该带内非底色像素只有 `(255,255,255)`）。
+    JuiceSystemUi.setStatusBar(
+      target,
+      lightIcons: target.computeLuminance() > 0.5,
+    );
+  }
   final TerminalController _terminalController = TerminalController();
   final FocusNode _terminalFocus = FocusNode();
 
@@ -178,6 +205,8 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   void _onSessionChanged() {
+    // 会话中也能改终端配色（长按菜单），状态栏要跟着走。
+    _syncStatusBar();
     if (mounted) setState(() {});
   }
 
@@ -195,6 +224,11 @@ class _TerminalPageState extends State<TerminalPage> {
     HardwareKeys.setVolumeKeysActive(false);
     _terminalController.dispose();
     _terminalFocus.dispose();
+    // 状态栏交还给应用配色：终端自己的底色只属于这个页面。
+    final restore = _appStatusBarColor;
+    if (restore != null) {
+      JuiceSystemUi.setStatusBar(restore);
+    }
     super.dispose();
   }
 
@@ -597,6 +631,21 @@ class _TerminalPageState extends State<TerminalPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
+          // 状态栏**底色**由 `_syncStatusBar()` 走平台通道直接设窗口（原因见那里）：
+          // 原版终端页 y0..127 = `#073642`，正是 `terminal_themes.json` 里
+          // `Solarized Dark` 的 ANSI 0 `#FF073642`；两侧 y128 起（终端画布）都是
+          // `(37,78,89)`，逐像素相同 —— 差异只在状态栏这一条。
+          // 这里只负责**图标明暗**，该字段在设备上确实生效。
+          systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarIconBrightness:
+                _controller.surfaceTheme.black.computeLuminance() > 0.5
+                    ? Brightness.dark
+                    : Brightness.light,
+            statusBarBrightness:
+                _controller.surfaceTheme.black.computeLuminance() > 0.5
+                    ? Brightness.light
+                    : Brightness.dark,
+          ),
           // 原版终端上也没有标题文字：`o_term.png` 在 137..152 之后的墨迹
           // 全部属于终端自己渲染的第一行输出。
           // 原版终端页**没有** ActionBar 溢出菜单：全 smali 树里本 Activity 既没有

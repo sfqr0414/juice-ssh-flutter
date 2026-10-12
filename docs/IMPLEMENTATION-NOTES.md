@@ -7063,3 +7063,85 @@ if (_identityIds.length > 1) ...[
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `C8A0448259F518C74D73E0B93D639FB6E21323BECE2AD434F95B38415627775C`。
+## 第 248-249 轮：终端页状态栏 = 终端配色 ANSI 0（根因、平台通道、双坑与设备验证）
+
+### 一、原版终端页的状态栏是什么
+
+重采原版 `o_term.png`：y0..127 = `(7,54,66)`，y128 起 = `(37,78,89)`。而
+`assets/data/terminal_themes.json` 里 **`Solarized Dark` 的 ANSI 0 = `#FF073642`**
+—— 即原版终端页的状态栏底色就是**当前终端配色的 ANSI 0**（不是 ActionBar 黄）。
+该带内非底色像素只有 `(255,255,255)`（1856px），即白色图标。
+
+克隆侧同一张图里 y128 起也是 `(37,78,89)`，**与原版逐像素相同** —— 终端画布本来
+就对齐，差异只在状态栏这一条。
+
+### 二、颜色探针：Flutter 侧的 `statusBarColor` 在本机不生效
+
+先在主题级 overlay 把 `statusBarColor` 设成**纯红**、终端页设成**纯绿**，构建后截图
+三个页面：主界面 / 通讯录 / 终端页的状态栏**全是 `(240,210,53)`**，红与绿都没出现。
+
+结论：Flutter 侧的 `SystemUiOverlayStyle.statusBarColor` 不被采纳。原因是 Flutter
+**默认使用 `SystemUiMode.edgeToEdge`**（见框架 `services/system_chrome.dart` 的说明），
+此时状态栏底色由**窗口**决定。`AppBar` 确实无条件把子树包进
+`AnnotatedRegion<SystemUiOverlayStyle>`（`material/app_bar.dart:1229`），机制没问题，
+是平台这一层不采纳该字段。所以必须**直接设窗口**。
+
+### 三、实现：平台通道直接设窗口
+
+* 新增 `lib/app/system_ui.dart`（`JuiceSystemUi.setStatusBar`），走
+  `MethodChannel('juicessh/system_ui')`；
+* `MainActivity.kt` 注册同通道，处理 `setStatusBar`：设
+  `window.statusBarColor`，并按 `lightIcons` 调
+  `WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS`（API 30+；以下回落
+  `SYSTEM_UI_FLAG_LIGHT_STATUS_BAR`）；
+* `terminal_page.dart`：`_syncStatusBar()` 取 `_controller.surfaceTheme.black`（= ANSI 0）
+  设状态栏，颜色没变时不重复过通道；`_onSessionChanged` 里调用（会话中改配色也跟随）；
+  `dispose` 里把它换回 `Theme.of(context).primaryColor`（应用配色），因为终端底色只属于
+  这个页面；
+* 终端页 `AppBar.systemOverlayStyle` 仍保留，但只负责**图标明暗**（该字段设备上生效）。
+
+### 四、第二个坑：Dart int 超过 32 位按 Long 编码
+
+首次装上去后状态栏**没变**，且原生侧日志也没出现。原因：`0xFF073642` = 4286039618
+超出 32 位有符号 int，标准编解码会把它编码成 **`Long`**，于是
+`call.argument<Int>("color")` 返回 **null**，`?: 0` 静默退化成 0。改成
+`(call.argument<Any>("color") as? Number)?.toInt()` 才拿到真值。
+
+修好后日志与截图（`v2_term.png`）：
+
+```
+I JuiceSshStatusBar: setStatusBar color=ff073642 light=false
+I JuiceSshStatusBar: after set: window.statusBarColor=ff073642
+```
+
+| 截图 | y0..127 | y128 起 |
+|---|---|---|
+| 原版 `o_term.png` | `(7,54,66)` | `(37,78,89)` |
+| 克隆 `v2_term.png` | **`(7,54,66)`** | **`(37,78,89)`** |
+
+### 五、离开终端页要归还
+
+返回键弹的是 `Do you want to leave this session running in the background?`
+（按钮 `CANCEL / NO / YES`），点 `YES` 保留后台后终端页 pop、`dispose` 执行，日志：
+
+```
+I JuiceSshStatusBar: setStatusBar color=fff0d235 light=false
+I JuiceSshStatusBar: after set: window.statusBarColor=fff0d235
+```
+
+`v5_back.png` 实测 y0..274 = **`(240,210,53)`**，内容从 y275 开始 —— 状态栏如期归还。
+
+### 六、环境记录
+
+模拟器中途因图形栈崩溃退出（`gfxstream`/Vulkan：`DisplaySurfaceGlContextHelper context
+was preempted`、`null ctx`、`Failed to import memory to ColorBufferGl`，混合 GPU 下常见）。
+现固定用 **`-gpu swiftshader_indirect`** 软件渲染启动，稳定且对取色无影响。
+
+### 七、交付物
+
+`lib/terminal/terminal_page.dart` 与 `MainActivity.kt` 的换行统一为 LF（与
+`.gitattributes` 的 `text eol=lf` 一致）。`flutter analyze` 为 `No issues found!`。
+本版 APK 字节数与上版相同（73,019,379），但哈希不同 —— 以哈希为准。
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `C96ED2F8D624FAEF1E4D66601B3E04537A3E27C97AFCF409354E34A08EBF4B01`。
