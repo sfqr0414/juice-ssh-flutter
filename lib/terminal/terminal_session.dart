@@ -65,17 +65,21 @@ class TerminalSessionController extends ChangeNotifier {
   void _writeToTerminal(String data) {
     final window = _interactiveTail + data;
     if (window.contains('\x1b[?')) {
-      final enters = _interactiveOn.hasMatch(window);
-      final leaves = _interactiveOff.hasMatch(window);
-      if (enters && !interactiveProgram.value) {
+      // 以窗口里**最后**一个匹配为准（第 282 轮记录的锐边：窗口尾巴里还留着上一个
+      // `h` 时，`leaves && !enters` 会把紧随其后的 `l` 当成"又来了一个进入"，
+      // 于是退出序列被漏掉、标志永远不复位）。
+      final ons = _interactiveOn.allMatches(window).toList();
+      final offs = _interactiveOff.allMatches(window).toList();
+      final onAt = ons.isEmpty ? -1 : ons.last.start;
+      final offAt = offs.isEmpty ? -1 : offs.last.start;
+      final leaving = offAt > onAt;
+      if (leaving) {
+        if (interactiveProgram.value) interactiveProgram.value = false;
+      } else if (!interactiveProgram.value) {
         interactiveProgram.value = true;
-      } else if (leaves && !enters && interactiveProgram.value) {
-        interactiveProgram.value = false;
       }
-      // 可观测性：出现私有模式就把"识别到什么、标志现在是什么"打出来，
-      // 这是后续 A/B 的前提（此前标志翻转没有任何痕迹）。
-      debugPrint('JuiceSshInteractive: on=$enters off=$leaves '
-          'value=${interactiveProgram.value}');
+      debugPrint('JuiceSshInteractive: on=${ons.length} off=${offs.length} '
+          'leaving=$leaving value=${interactiveProgram.value}');
     }
     _interactiveTail =
         window.length > 24 ? window.substring(window.length - 24) : window;
