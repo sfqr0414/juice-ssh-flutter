@@ -7780,3 +7780,165 @@ JuiceSSH 启动耗时: 开库 477~547ms + 资源/设置/文案 6~10ms = 485~555m
   `FFA253D5CE04207BD7EFE841E1E8A16BBF9EFFDBABA44CF16E3D903A80DF4064`
 - `dist/juice-ssh-flutter-3.2.2-armv7.apk`（28622194 字节），SHA-256：
   `A64C2107F9713322AE1AD09B7130B49DCB03DE7F748AFD92C4B7FF90477CD1EE`。
+
+## 第 258 轮：用户实测四条（终端顶端偏移 / 快捷键键盘与 `/`·`-` / 复制选区 / 启动与体积）
+
+用户本轮原话（四条，逐条对应）：
+
+1. 终端的"离顶端有距离"。
+2. 快捷键键盘点击没有切换弹出/隐藏状态，且快捷键的 `/` `-` 功能点击没有输入相应字符。
+3. 使用"复制从屏幕"时光标选择开头和结尾没有颜色区分提示反馈给用户，原版 orangejuice 选择光标位置应为红色、选择区域应为红色。选择完成应该重置选择状态完成复制。
+4. 应用启动太慢，性能差，体积大。
+
+### 第 2 条之一：`/` 与 `-` 一个字节都发不出去（已修，端到端验证）
+
+根因不在布局也不在键位表，而在 xterm 的输入层。`lib/terminal/escape_characters.dart` 里
+`KeyTag.minus = 69`、`KeyTag.slash = 76`（android keycode），`handleKeyTag()` 此前把它们
+交给 `_terminalKeyForAndroidKeyCode()` → `terminal.keyInput()`；但 xterm 4.0.0 的
+`TerminalKey` 枚举里**既没有 `minus` 也没有 `slash`**（整个包里只有
+`core/input/keytab/qt_keyname.dart` 与 `ui/input_map.dart` 两张映射表出现过这两个名字），
+`Terminal.keyInput()` 找不到分支就返回 `false`，于是**一个字节都不会发出去** —— 这正是
+"点击没有输入相应字符"。`|`（`KeyTag.pipe`）走的是同一条死路。
+
+改法：把可打印键并进一条分支，直接走文本通道（`terminal_session.dart`）：
+
+```dart
+case KeyTag.pipe:
+case KeyTag.minus:
+case KeyTag.slash:
+  terminal.textInput(switch (tag) {
+    KeyTag.minus => '-',
+    KeyTag.slash => '/',
+    _ => '|',
+  });
+  return;
+```
+
+**验证用的是地面真值，不是截图**：`tools/_sshd.py` 的 `_session_loop` 对每个收到的字节块都打
+`print('%s 收到 %d 字节: %r')`。本轮先把它杀掉再用 `-RedirectStandardOutput` 重启到
+`.research/sshd.log`，于是"字节到底有没有到服务端"可以被直接读到：
+
+```
+#1 收到 1 字节: b'/'
+#1 收到 13 字节: b'\x1bc\x1b[2J\x1b[3J\x1b[H'
+#1 收到 1 字节: b'-'
+#1 收到 1 字节: b'|'
+```
+
+同一份日志顺带证明了两件事：长按菜单里的 `Clear` 确实发出原版那串
+`ESC c ESC[2J ESC[3J ESC[H`；`-` 键此前那次"没反应"其实是当时我的节点正则写错
+（键面是 `-&#10;-` 而不是 `-&#10;/`），改成 `&#10;-\s*$` 后一次点中。
+
+### 第 2 条之二：键盘弹出/隐藏（上一轮改法，本轮补设备验证）
+
+`_toggleSoftKeyboard()` 不再依赖自己记账的 `_softKeyboardVisible`，而是查原生
+`WindowInsets.Type.ime()`（`juicessh/system_ui` 通道的 `imeVisible`，
+`MainActivity.kt` 里同时打 `JuiceSshIme: imeVisible=…`）。设备实测
+`dumpsys input_method` 的 `mInputShown` 随点击在
+`false → true → false → true → false` 之间切换，logcat 的 `JuiceSshIme` 同步变化。
+
+### 第 3 条：复制选区（已修，红色像素量化验证）
+
+根因是**上一轮我自己写错了注释、也写错了实现**：xterm 4.0.0 的 `TerminalView`
+**根本没有触摸选区手势**。`lib/src/terminal_view.dart` 里 `_onTapDown` 只做两件事 ——
+有选区就 `clearSelection()`，否则弹键盘；整个文件只有 `onTapUp/onTapDown/
+onSecondaryTapDown/onSecondaryTapUp`，没有 `LongPressGestureRecognizer`。
+所以"拖到起点/终点"永远选不中，选区红框一次都没出现过（上一轮那句
+"xterm 内部自带 LongPressGestureRecognizer"是错的，已从注释里删掉）。
+
+改成本页自己算（`terminal_page.dart`）：
+
+* `_cellAt(Offset)`：按 xterm 的口径把本地像素换算成单元格 —— 单元格宽高 =
+  (控件尺寸 − 2×`terminal:margin`) / `viewWidth|viewHeight`，贴底显示时可视区第一行 =
+  `lines.length - viewHeight`；
+* `_applyCopySelection()`：`buffer.createAnchorFromOffset()` +
+  `TerminalController.setSelection()`（两者都是 xterm 公开 API）；
+* 按下即定锚点（原版按下光标处就是红色），拖动扩展，点一下（终端或提示条）推进/确认；
+* 主题 `terminal_themes.dart` 的 `selection` 从半透明前景色改成原版红 `#FFF44336`，
+  `JuiceFixedColors.copyInstructionsStartSelection`（红）/`…EndSelection`（绿）不变；
+* 复制完成时按用户要求**先取文本再收起选区**，并清空锚点。
+
+截图量化（1080×2400，红色 `#F44336` 像素计数：终端区 y=129..2100、提示条区 y=2140..2345）：
+
+| 截图 | 终端区红 | 终端区绿 | 提示条红 | 提示条绿 |
+| --- | --- | --- | --- | --- |
+| `q2_copymode` 刚进入"复制从屏幕" | 0 | 0 | 49439 | 0 |
+| `q3_drag_start` 拖动之后 | **12752** | 0 | 0 | 49260 |
+| `q4_phase2` 点一下确认之后 | 0 | 0 | 0 | 0 |
+
+`q3` 红色包围盒 `x=0..1076 y=587..675`（整宽两行），"选择区域应为红色"成立；
+`q4` 两个区域红绿全部归零，"选择完成应该重置选择状态完成复制"成立。
+
+### 第 1 条：终端顶端偏移 —— 确认是回归，方向已定但未修完
+
+同一台测试服务端、同一段横幅下的首行墨迹位置：
+
+| 截图 | 首行墨迹 y | 说明 |
+| --- | --- | --- |
+| `o_term.png` 原版 | **137** | 画布从 128 起，第 0 行就落在 137 |
+| `c_term.png` 复刻（改前） | **241** | 画布同样从 128 起 —— 差 104px |
+| `r1_banner.png` 复刻（加状态栏内边距后） | **374** | 反而又下移 133px |
+
+**排除掉的**：画布本身没问题。逐列扫描 y 方向的颜色分段，复刻与原版都是
+"状态栏 0..127 → 画布 128.."，一模一样；`o_term.png` 的键位条在 1333（当时软键盘
+弹着），复刻在 2153（软键盘收起），这只是会话状态差异。
+
+**我一度判断错的**：以为"body 从 y=0 开始，所以终端第 0..2 行被状态栏盖住，补上状态栏
+内边距即可"。实测把这个改动加到整页之后，首行墨迹从 241 变成 374（正好 48dp×2.625=126px），
+是**整体下移**而不是上移 —— 判断错误，改动已回退。
+
+**留下的坐标证据**：
+
+```
+JuiceSshGeom:         widget=411x820 cols=80 rows=24 cellH=~34.18 bufferLines=24 cursorY=6 scrollback=0 fontSize=14.0 topInset=104.8
+JuiceSshGeom(delayed): box=411x820 cols=50 rows=42 lines=43 cursorY=7 fontSize=14.0 scrollback=1
+```
+
+* `widget=411x820` 逻辑像素 ×2.625 = **2152 物理像素**，正好等于画布 128..2152，而
+  键位条占 184px、导航栏占 63px、屏幕 2400px —— 三者相加刚好 2400，说明 body 确实从
+  y=0 起、终端控件没有被外部下推，偏移发生在终端**内部**。
+* 首帧采样时终端还是 xterm 默认的 **80×24**：服务端横幅比首帧还早 —— logcat 里
+  `JuiceSshBell` 在 `JuiceSshGeom` 之前 **2ms**，也就是横幅是在 resize 之前写进终端的。
+  延迟采样才看到真实尺寸 **50×42**、缓冲区 43 行、`cursorY=7`、`scrollback=1`、字号 14。
+* `tools/_sshd.py` 的横幅以 `ESC[2J ESC[H` 开头，之后正好 **6 行**内容
+  （`JUICE TERMINAL SAMPLE` / 彩色样本 / 粗体下划线 / 256 色 / ASCII / 字母表），
+  第 6 行是提示符 —— 与首帧实测 `cursorY=6` 完全吻合。也就是说缓冲区第 0 行就是有字的，
+  "前几行本来是空行"这条假设不成立。
+* 按 `scrollback=1`、行高 ≈ 820/42 ≈ 19.5dp ≈ 51px 估算，首行墨迹本该落在
+  y ≈ 61 附近，实测 241 —— 还差约 180px（≈3.5 行）无法用滚动/内边距解释。
+* 这是**回归**：commit `045e8f1`（第 256 轮）明确写着"第 0 行约 135 与原版 137 一致"，
+  同一个量测现在是 241。
+
+下一步抓手（已写进代码，下一次只需换量测点）：`TerminalView` 的绘制原点是
+`-_scrollOffset + _padding.top`，`_scrollOffset` 只可能 ≥0，所以内容只可能被**上推**，
+不可能被下推 —— 这说明要么 `_padding` 非 0（`terminal:margin` 在设备上的真值还没读到，
+sqlite3 的引号被 adb shell 吃了两轮），要么 painting context 给的 offset 不是 0。
+下一轮要把 `RenderTerminal.cellSize` 与 `_lineOffset` 直接量出来（给 `TerminalView`
+包一层自定义 render object，或者临时 fork 一份 xterm 打点）。
+
+### 第 4 条：启动与体积
+
+* **首帧**：`main()` 现在只做 `WidgetsFlutterBinding.ensureInitialized()` + `runApp`，
+  开库/资源/设置/文案全部挪进 `JuiceBootstrap.initState`，首帧日志
+  `JuiceSSH 首帧: main 之后 0ms`（改前 485–560ms）。
+* **开库耗时分解**：`getDatabasesPath()` 500–800ms + `openDatabase()` 11–34ms
+  （`sqfliteFfiInit` 0ms）。试过 Android 侧切 `databaseFactoryFfi`、也试过原生侧
+  在 `onCreate` 里预热目录，**两者都没有改善**（前者还一度
+  `sqlite_error: 14 unable to open database file`），都已回退，保持 sqflite 默认后端。
+* **体积**：`--split-per-abi` 之后（同一份源码、同一轮构建）：
+
+| 产物 | 字节 | SHA-256 |
+| --- | --- | --- |
+| `dist/juice-ssh-flutter-3.2.2.apk`（fat，含三套 ABI） | 73052147 | `E040B0EAF6D56F4D85AF0D9A9A2D87B44E3E5E7DCCC44CBE3DD977CEB645C4EB` |
+| `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（手机用） | 30918184 | `FF2F60648819D473603167EE577AC11A372064B814C0C3A05607BD06DB63946C` |
+| `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk` | 28638578 | `E747BCA160D5E11821C0F6CAB72FF4425F100FC34EFBCD87E9D601931DE3755D` |
+| `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（模拟器用） | 32369913 | `BCF16F114E2CFF812C21596780087FFBD3EDB984804FC815B7E49FF522570F0D` |
+
+  按 ABI 拆分后手机装的是 29.5MiB（原来 69.7MiB fat），体积降约 58%；
+  原版 JuiceSSH 3.2.2 是 23.7MB，其中字体 15.3MB、原生库 26.4MB（未压缩口径）。
+  进一步压缩的空间主要在字体（复刻字体 16.2MB，其中 Nerd Fonts 8 个家族）。
+* **性能**：`dumpsys gfxinfo` 对 Flutter 无效（`Total frames rendered: 0`，
+  50th percentile 4950ms），uiautomator dump 自身 1–2s 的开销会把"点击到响应"
+  污染成 3511ms，这两项都**不作为性能证据**；模拟器同类构建跨时间还会漂移
+  （1240ms → 1965ms），跨构建的绝对值对比不可靠。本轮所有结论都用可复现的
+  字节/像素真值（sshd 收到的字节、红色像素计数、首行墨迹 y）。
