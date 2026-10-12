@@ -44,6 +44,12 @@ BANNER = (
     '\a'
 )
 
+# 第 348 轮：给"普通模式下能否滑屏滚动"的回归验证加 `--many-lines`。
+# 没有历史时 `maxScrollExtent` 是 0，拖动什么都测不出来，所以让服务端在样本后面
+# 直接多吐 60 行，制造确定的可滚历史。
+if '--many-lines' in sys.argv:
+    BANNER += ''.join('scroll line %02d\r\n' % i for i in range(1, 61))
+
 
 # 宿主密钥**固定**下来。早期这里是 `paramiko.RSAKey.generate(2048)`，每次重启
 # 服务端指纹都变，客户端于是每次都弹「Host Verification」（Public key has

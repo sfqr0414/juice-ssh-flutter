@@ -210,6 +210,19 @@ class TerminalSessionController extends ChangeNotifier {
         JuiceTerminalThemes.keyBarOverlay,
       );
 
+  /// 等交互回调贴上（最多 5 秒，每 50ms 查一次）。
+  ///
+  /// 消除 `SessionHost.acquire` 与 `terminal_page` 之间"先建会话、后挂回调"的竞态：
+  /// 首次连接新主机时，主机密钥质询会早于回调到达。
+  Future<T?> _awaitHandler<T>(T? Function() read) async {
+    var value = read();
+    for (var i = 0; i < 100 && value == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      value = read();
+    }
+    return value;
+  }
+
   /// 建立连接。
   Future<void> connect() async {
     _state = TerminalSessionState.connecting;
@@ -222,9 +235,23 @@ class TerminalSessionController extends ChangeNotifier {
         connection: connection,
         identities: identities,
         hostKeyStore: hostKeyStore,
-        // 没有页面附着时（后台会话）：主机密钥一律拒绝、密码直接放弃。
-        onHostKey: onHostKeyChallenge ?? (_) async => HostKeyVerdict.rejected,
-        onPassword: onPasswordPrompt ?? (_, _) async => null,
+        // 页面附着与会话开始连接之间存在竞态：`SessionHost.acquire` 先构造控制器
+        // （`connect()` 随即开始），`terminal_page` 之后才
+        // `_controller.onHostKeyChallenge = …`。首次连接**新主机**时，主机密钥质询
+        // 会早于回调到达；若此时立刻拒绝，"全新安装后第一次连接任何新主机"必然
+        // 失败，界面还只显示误导性的"连接超时"（第 26 轮定位到）。
+        // 所以这里**短暂等待**回调贴上；确实没有页面附着（后台会话）才拒绝。
+        onHostKey: (challenge) async {
+          final handler = await _awaitHandler(() => onHostKeyChallenge);
+          if (handler == null) return HostKeyVerdict.rejected;
+          return handler(challenge);
+        },
+        // 口令提示同理：早到一步就拿不到页面回调，直接放弃会表现成认证失败。
+        onPassword: (prompt, echo) async {
+          final handler = await _awaitHandler(() => onPasswordPrompt);
+          if (handler == null) return null;
+          return handler(prompt, echo);
+        },
         onProgress: (message) {
           _progress = message;
           notifyListeners();
