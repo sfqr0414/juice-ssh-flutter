@@ -9708,3 +9708,26 @@ Flutter 没有把这一行当成"输入框以外的区域"。
 
 * 真机帧率与内存仍是空白（需要用户设备）；
 * 本轮无代码改动、无新交付物，`dist/` 未变。
+## 第 318-319 轮：`flutter test` 全绿（20 用例）与测试面盘点
+
+"验证"这一环此前只做过构建产物核验与设备实测，**从没跑过工程自带的测试套件**，这轮补上。
+
+`flutter test` 结果：**All tests passed!（+20）**，三个测试文件：
+
+| 文件 | 覆盖内容 |
+| --- | --- |
+| `test/terminal_data_test.dart`（7,498 B） | 终端调色板：9 套配色；前景/背景落在下标 256/257；Dark 前 16 个 ANSI 色准确；**下标 16..255 在九套配色里完全一致**（标准 xterm 256 色）；`foregroundAt` / `backgroundAt` 与数组下标对齐；`swatches` 取前 8 色。功能键转义序列：5 种终端类型 × 12 个键；`linux` / `xterm` / `xterm-color` / `vt100` 序列准确；未知类型回退 `linux`；`functionKey(n)` 与 `functionKeys` 一致且 F1 编号为 1。`KeyTag` 常量与原版 packed-switch 分支一致、Android KeyEvent 键值与原版 `android:tag` 一致 |
+| `test/terminal_surface_test.dart`（1,358 B） | 终端渲染面相关 |
+| `test/terminal_theme_test.dart`（2,137 B） | 主题配色 |
+
+这些用例正好压在 1:1 复刻最容易"看着像但其实是错的"地方：色表下标、功能键转义序列、
+键值编码 —— 都是协议细节，靠肉眼与截图验证不了。
+
+另外确认：工程**没有 `integration_test/` 目录**。所以第 311 轮定的
+"端口转发端到端验证改走 `flutter drive` / `integration_test`"目前**还没有落地载体**，
+要补必须先新建该目录与其依赖。
+
+### 待办
+
+* 若要补 UI 端到端测试，需新建 `integration_test/`（并加 `integration_test` 依赖）；
+* 本轮无代码改动、无新交付物，`dist/` 未变。
