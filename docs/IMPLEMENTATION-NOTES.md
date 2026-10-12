@@ -8732,3 +8732,53 @@ top: (position == 0 && _popupKeyboardVisible) ? 0 : topInset,
   `9A35625310568248C3AE82C69135DA5380C2809F3748641DD3C1AA921AED6661`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `97B75BA89CE7E12CA39E5424DBF91B7C87AC45A17A34D2599936C981603497D4`。
+## 第 273 轮：密码加密持久化（跨重启记住）
+
+用户第 2 条要求：`重启也记住，再做一个（加密）持久化`。
+
+先查了依赖：`pubspec.yaml` 里 `flutter_secure_storage: ^11.2.0` **早就声明了却从未被使用**
+（全 `lib/` 搜 `FlutterSecureStorage|secureStorage|Keychain` 零命中），所以不需要动依赖，
+只补实现与接线。
+
+新增 `lib/ssh/password_vault.dart`：`PasswordVault.read/write/erase`，键格式
+`juicessh.pw.<user>@<host>`。Android 侧由 **Keystore** 支撑（密文落应用私有存储，
+不是明文 SQLite / SharedPreferences）；iOS/macOS 走 Keychain，Linux 走 libsecret。
+读写全部 try/catch 兜底：存储不可用（Keystore 被重置、设备不支持）时**静默退回**
+"每次都问"，不让它把连接流程带崩。
+
+`ssh_service.dart` 的 `onPasswordRequest` 改成三级来源：
+**本进程内存缓存 → 加密持久化 → 弹窗**。
+
+### 一个必须写下来的坑：错误密码不能被反复复用
+
+"记住密码"最危险的副作用是：用户在服务器上改了密码之后，本地那条旧记录会被反复送出去，
+于是永远连不上而且**再也不弹窗**。这里用一个"影子键"在**同一张缓存表**里记标记，
+不新增字段：
+
+* 密码来自**加密存储**时，往表里写 `'<user>@<host>#vault'`；
+* 同一次连接里服务端**再次**索要密码，即说明刚才那条被拒 → `remove` 掉影子键与内存键，
+  并 `PasswordVault.erase(...)` 删除加密存储里的记录，然后正常弹窗问用户；
+* 用户输入的新密码会重新写入加密存储。
+
+这样"记住"与"改密码后能自愈"同时成立。
+
+### 如实标注：本条未做设备级验证
+
+模拟器上的测试服（`tools/_sshd.py`）同时接受公钥与密码，密钥路径会先短路掉密码提示，
+复现不出"每次都要求输密码"的场景；`input text` 注入到 Flutter 对话框这条通道此前也未验证过。
+人工复测步骤：快速连接（临时身份、不带密钥）→ 输密码进终端 → **杀掉应用重开** →
+再快速连接，应**不再**要求输密码；随后在服务器上改密码，应能重新弹窗（自愈）。
+构建层面：`flutter analyze` 通过（`No issues found`）。
+
+### 交付物
+
+四份 APK，SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73068531 字节），SHA-256：
+  `9DBF61A143B5463D46BE5D9600F56D53838771CCD7BE62CD9DE0A34701C82997`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `7C5B8F168D65BFFFC6C4074F184DA807F056D2B06E2FC426426A29AD214A113B`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28654962 字节），SHA-256：
+  `E7467BECD9A150CDDD698825D31E6D8AC99F7936D0008EF3D01FF5A22105D6B9`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `B96A8AB490E65BC575734780FD684AD9C698CD0B149590E110E8010920C9BFA5`。

@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../data/juice_database.dart';
 import '../data/models.dart';
+import 'password_vault.dart';
 
 /// 主机密钥的确认结果。对应原版「主机密钥已被拒绝 / Host key rejected」这条路径。
 enum HostKeyVerdict {
@@ -320,15 +321,35 @@ class SshConnector {
             passwordUsed = null;
             return value;
           }
-          // 已经在这个进程里输过密码 → 直接复用，不再弹窗（用户要求：
-          // "下一次点'常用'快速连接不再要求输入密码，直接进终端"）。
+          // 密码来源优先级：本进程内存缓存 → **加密持久化**（跨重启记住）→ 弹窗问用户。
+          // 用户第 2 条要求："重启也记住，再做一个（加密）持久化"。
           final cacheKey = '$username@${connection.address}';
-          final cached = SshConnector._passwordCache[cacheKey];
-          if (cached != null) return cached;
+          // `#vault` 这个"影子键"复用同一张表当标记位：记录"上一次给出去的密码来自
+          // 加密存储"。同一次连接里如果服务端**再次**索要密码，就说明那条记录是错的，
+          // 此时把它从加密存储里删掉并改为询问用户 —— 否则错误的密码会被反复复用，
+          // 用户改了服务器密码后就永远连不上（这是必须避免的坑）。
+          final vaultKey = '$cacheKey#vault';
+          if (_passwordCache.containsKey(vaultKey)) {
+            _passwordCache.remove(vaultKey);
+            _passwordCache.remove(cacheKey);
+            await PasswordVault.erase(
+                user: username, host: connection.address);
+          } else {
+            final cached = _passwordCache[cacheKey];
+            if (cached != null) return cached;
+            final stored = await PasswordVault.read(
+                user: username, host: connection.address);
+            if (stored != null) {
+              _passwordCache[vaultKey] = stored;
+              return stored;
+            }
+          }
           final answer = await onPassword(
               '请输入 $username@${connection.address} 的密码', false);
           if (answer != null && answer.isNotEmpty) {
-            SshConnector._passwordCache[cacheKey] = answer;
+            _passwordCache[cacheKey] = answer;
+            await PasswordVault.write(
+                user: username, host: connection.address, password: answer);
           }
           return answer;
         },
