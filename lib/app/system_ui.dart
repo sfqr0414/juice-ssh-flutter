@@ -40,4 +40,22 @@ class JuiceSystemUi {
       // 同上。
     }
   }
+
+  /// 输入法（软键盘）此刻是否**真的可见**。
+  ///
+  /// 终端页的 `Toggle Keyboard` 键用它来判断该弹出还是收起，而不是自己记账：
+  /// 用户用系统手势把键盘划下去、或输入法自己关掉之后，Dart 侧记录的"可见"会与真实
+  /// 状态不一致，表现就是"这个键点了没反应"（既弹不出来也收不回去）。
+  ///
+  /// 查询不可用时返回 **null**（非 Android、通道未注册），调用方自行回退。
+  static Future<bool?> isImeVisible() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<bool>('imeVisible');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
 }

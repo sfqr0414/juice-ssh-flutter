@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -314,22 +315,30 @@ class _TerminalPageState extends State<TerminalPage> {
 
   // ---------------------------------------------------------- 键盘 --
 
-  void _toggleSoftKeyboard() {
-    // 用自己维护的**显式状态**判断，不看 `_terminalFocus.hasFocus`，也不看
-    // `MediaQuery.viewInsetsOf(context)`：
-    //   * 那个隐藏输入框长期持有焦点，按焦点判断会让这个键只会收起、永远弹不出来；
-    //   * 实测（`dumpsys input_method` 的 `mInputShown`）在终端页这个 context 下
-    //     `viewInsets.bottom` 读到的始终是 0，于是两次点击都走"显示"分支，
-    //     第二次点击收不起来。
-    // 现在：一次点击显示、再点一次收起，行为确定。
-    if (_softKeyboardVisible) {
+  Future<void> _toggleSoftKeyboard() async {
+    // 真实状态**从原生侧查**（`WindowInsets.isVisible(ime())`）。
+    //
+    // 之前两种 Dart 侧判断都不可靠，用户实测"点了没反应"：
+    //   * 看 `_terminalFocus.hasFocus` —— 那个隐藏输入框长期持有焦点，于是永远走
+    //     "收起"分支，弹不出来；
+    //   * 看 `MediaQuery.viewInsetsOf(context).bottom > 0` —— 实测在终端页这个
+    //     context 下恒为 0（`dumpsys input_method` 的 `mInputShown` 已经是 true），
+    //     于是永远走"显示"分支，收不回去；
+    //   * 纯 Dart 记账 `_softKeyboardVisible` —— 用户用系统手势把键盘划下去之后
+    //     两边就失配了，第一次点击等于白点。
+    // 原生查询不可用时才退回记账值。
+    final visible = await JuiceSystemUi.isImeVisible() ?? _softKeyboardVisible;
+    if (visible) {
       _softKeyboardVisible = false;
       _terminalFocus.unfocus();
-      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
       _softKeyboardVisible = true;
       _terminalFocus.requestFocus();
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      // 等一小段时间让焦点真正落到输入框上再要求显示：紧接着 requestFocus()
+      // 调用 `TextInput.show` 在部分机型上会被忽略（点了不弹）。
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     }
   }
 
@@ -340,7 +349,7 @@ class _TerminalPageState extends State<TerminalPage> {
         setState(() => _showingFunctionKeys = !_showingFunctionKeys);
         return;
       case KeyTag.toggleKeyboard:
-        _toggleSoftKeyboard();
+        unawaited(_toggleSoftKeyboard());
         return;
     }
     _controller.handleKeyTag(tag);

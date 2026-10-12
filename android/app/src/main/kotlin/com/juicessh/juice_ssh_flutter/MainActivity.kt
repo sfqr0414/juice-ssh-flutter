@@ -111,6 +111,19 @@ class MainActivity : FlutterActivity() {
                         Integer.toHexString(window?.statusBarColor ?: 0),
                 )
                 result.success(null)
+            } else if (call.method == "imeVisible") {
+                // 输入法此刻是否真的可见。终端页的 Toggle Keyboard 键靠它决定
+                // 该弹出还是收起 —— Dart 侧自己记账会在系统手势收起键盘后失配，
+                // 表现就是"点了没反应"。
+                val insets = window?.decorView?.rootWindowInsets
+                val visible = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    insets?.isVisible(android.view.WindowInsets.Type.ime()) ?: false
+                } else {
+                    @Suppress("DEPRECATION")
+                    (insets?.systemWindowInsetBottom ?: 0) > 0
+                }
+                android.util.Log.i("JuiceSshIme", "imeVisible=$visible")
+                result.success(visible)
             } else {
                 result.notImplemented()
             }

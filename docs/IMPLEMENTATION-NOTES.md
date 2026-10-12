@@ -7682,3 +7682,101 @@ final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节；本轮无代码改动，与第 255 轮同一包），
   SHA-256：
   `83099D0C78694D7D39884B4457060A2D34BCE31A5921C4AD0FDB4D5B552E6E91`。
+## 第 257 轮：用户新报三条（快捷键键盘 / 启动速度 / 体积），目标轮次改 1000
+
+用户把目标轮次上限从 256 改成 1000（已通过 `update_goal` 改成 `maxGoalRounds=1000`
+并 resume），同时报了三件事。本轮处理前两件，第三件只拿到可用的量化口径、没拿到有效证据。
+
+### 一、快捷键键盘：改成向原生查真实输入法状态
+
+用户实测"还是不能点击弹出/收回"。前几轮 Dart 侧试过三种判断，**全都不可靠**，实测记录：
+
+| 判断依据 | 实测结果 |
+|---|---|
+| `_terminalFocus.hasFocus` | 隐藏输入框长期持有焦点 → 永远走"收起"分支，弹不出来 |
+| `MediaQuery.viewInsetsOf(context).bottom > 0` | 在终端页这个 context 下**恒为 0**（此时 `dumpsys input_method` 的 `mInputShown` 已是 true）→ 永远走"显示"分支，收不回去 |
+| 纯 Dart 记账 `_softKeyboardVisible` | 用户用系统手势把键盘划下去之后两边失配 → 第一次点击白点 |
+
+本轮改成**问原生**：`juicessh/system_ui` 通道加 `imeVisible`，Kotlin 侧用
+`WindowInsets.isVisible(WindowInsets.Type.ime())`（API < 30 退回
+`systemWindowInsetBottom > 0`），Dart 侧 `JuiceSystemUi.isImeVisible()` 查不到才退回记账值；
+另外显示前先 `requestFocus()` 再等 80ms 才 `TextInput.show`（紧接着 requestFocus 调 show
+在部分机型上会被忽略）。
+
+设备验证（`mInputShown` 与原生日志同步一致）：
+
+```
+初始                 mInputShown = false
+第 1 次点击 Toggle Keyboard -> true    JuiceSshIme: imeVisible=false（点击前查询）
+第 2 次点击                 -> false   JuiceSshIme: imeVisible=true
+第 3 次点击                 -> true    JuiceSshIme: imeVisible=false
+```
+
+### 二、体积：60.5MB 是三份原生库，改用拆分包
+
+`dist` 里那个 69.6MB 的 fat APK 构成（解压后）：
+
+| 部分 | 大小 |
+|---|---|
+| `lib/x86_64`（模拟器用，用户手机上永远用不到） | 21.82 MB |
+| `lib/arm64-v8a` | 20.43 MB |
+| `lib/armeabi-v7a` | 18.25 MB |
+| 字体（8 套 Nerd Font + Roboto + fontawesome） | 15.96 MB |
+| Dart AOT `libapp.so`（每 ABI 一份） | ~7.4 MB ×3 |
+
+改法：`flutter build apk --release --split-per-abi`。结果与对照：
+
+| 包 | 文件体积 | 解压后 | 字体 | 原生库 |
+|---|---|---|---|---|
+| 原版 JuiceSSH.apk | 23.7 MB | 53.4 MB | 15.3 MB | 26.4 MB |
+| 复刻 arm64 拆分包 | **29.5 MB** | 38.5 MB | 16.2 MB | 20.4 MB |
+| 复刻 armeabi-v7a 拆分包 | 27.3 MB | — | — | — |
+| 复刻 x86_64 拆分包（仅模拟器） | 30.9 MB | — | — | — |
+
+即从 **69.6MB 降到 29.5MB（−58%）**，与原版的 23.7MB 同一档。字体比原版只多 0.9MB（同样
+是 8 套完整 Nerd Font），所以体积差异不在字体、在引擎。分发文件：
+
+* `dist/juice-ssh-flutter-3.2.2-arm64.apk` —— 现代手机装这个；
+* `dist/juice-ssh-flutter-3.2.2-armv7.apk` —— 老 32 位设备。
+
+### 三、启动：分解量出来了，瓶颈是开库
+
+`main()` 里加了埋点（`adb logcat -s flutter`）：
+
+```
+JuiceSSH 启动耗时: 开库 477~547ms + 资源/设置/文案 6~10ms = 485~555ms
+```
+
+稳态（库已存在、连续三次冷启动）也是这个量级，说明那 500ms **不是首次建库的一次性成本**。
+同时把原来串行 await 的三步（设置 / 资源 / 文案）改成 `Future.wait` 并发，三者合计从
+"求和"降到 6~10ms。
+
+`am start -W` 的 TotalTime 对照：
+
+| | 第1次 | 第2次 | 第3次 |
+|---|---|---|---|
+| 复刻 | 1317 ms | 1277 ms | 1417 ms |
+| 原版 | 602 ms | 574 ms | 610 ms |
+
+差额分两段：引擎/Activity 装载约 760~870ms（Flutter 起步价 + 20MB 原生库加载），以及开库
+约 500ms。**下一步的明确动作**：把数据层从 `sqflite`（每进程一个隔离 + 平台通道往返）换成
+`sqlite3` 的 FFI 同步访问 —— 预计能把开库从 ~500ms 压到几十毫秒；若不想动数据层，另一条路
+是把开库移出首帧（首帧只画与原生启动主题同色的底色）。
+
+### 四、流畅度：本轮没拿到有效证据（如实说明）
+
+* `adb shell dumpsys gfxinfo <pkg>` 对 Flutter **无效** —— 实测 `Total frames rendered: 0`，
+  且百分位读出 4950ms 这种无意义值（Flutter 走引擎自己的渲染表面，不走 View 体系）；
+* 用脚本"点一下 + uiautomator dump 等元素出现"量界面耗时也会失真：单次
+  `uiautomator dump` 本身就要 1~2 秒，测出的"首页→连接页 3511ms"绝大部分是测量工具的开销。
+
+所以本轮**不声称**已经优化了渲染性能，也不声称存在渲染问题。要做的是下一轮用
+`flutter run --profile` + DevTools timeline（或 `WidgetsBinding.addTimingsCallback`）
+拿真实帧耗时，再决定改什么。
+
+### 五、交付物
+
+- `dist/juice-ssh-flutter-3.2.2-arm64.apk`（30918184 字节），SHA-256：
+  `FFA253D5CE04207BD7EFE841E1E8A16BBF9EFFDBABA44CF16E3D903A80DF4064`
+- `dist/juice-ssh-flutter-3.2.2-armv7.apk`（28622194 字节），SHA-256：
+  `A64C2107F9713322AE1AD09B7130B49DCB03DE7F748AFD92C4B7FF90477CD1EE`。

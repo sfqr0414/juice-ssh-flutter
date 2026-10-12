@@ -18,18 +18,32 @@ import 'data/juice_database.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 启动耗时埋点（`adb logcat -s flutter` 可见）。这四步都在 runApp 之前，
+  // 首帧必须等它们全部完成，所以要能分别量出来才知道该压哪一步。
+  final stopwatch = Stopwatch()..start();
+
   final database = await JuiceDatabase.open();
-  final settings = await SettingsController.load(database);
-  final resources = await AppResources.load();
-  final locale = WidgetsBinding.instance.platformDispatcher.locale;
-  final strings = await JuiceStrings.load(locale);
+  final databaseMs = stopwatch.elapsedMilliseconds;
+
+  // 三者互不依赖（只有设置需要数据库），并发加载：总耗时取决于最慢的一项，
+  // 而不是三者之和。此前是串行 await，白等了两个资源解析的时间。
+  final loaded = await Future.wait<Object>([
+    SettingsController.load(database),
+    AppResources.load(),
+    JuiceStrings.load(WidgetsBinding.instance.platformDispatcher.locale),
+  ]);
+  final restMs = stopwatch.elapsedMilliseconds - databaseMs;
+  debugPrint(
+    'JuiceSSH 启动耗时: 开库 ${databaseMs}ms + 资源/设置/文案 ${restMs}ms '
+    '= ${stopwatch.elapsedMilliseconds}ms',
+  );
 
   runApp(
     JuiceApp(
       database: database,
-      settings: settings,
-      resources: resources,
-      strings: strings,
+      settings: loaded[0] as SettingsController,
+      resources: loaded[1] as AppResources,
+      strings: loaded[2] as JuiceStrings,
     ),
   );
 }
