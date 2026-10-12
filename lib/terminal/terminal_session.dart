@@ -37,6 +37,35 @@ enum TerminalSessionState {
 /// 2. **字节泵** —— 远端输出喂给 [Terminal]，终端产生的输入写回远端；
 /// 3. **修饰键语义** —— 还原原版 Ctrl / Alt 的行为。
 class TerminalSessionController extends ChangeNotifier {
+  /// 交互式程序（htop/vim 等）是否正在跑。判定完全来自**入站数据**里的私有模式：
+  /// `ESC[?1049h` = 切备用屏；`ESC[?1000h/1002h/1003h` = 打开鼠标上报
+  /// （htop 默认就开鼠标）；`ESC[?47h` 是老式备用屏写法。对应的 `...l` 复位。
+  ///
+  /// 用途（第 274/275 轮）：用户实测"进 htop 不能滑（很好），但旋转到横屏又能滑了，
+  /// 转回竖屏还能滑"。根因是旋转让**视口变矮**，主屏回滚缓冲立刻出现滚动余量
+  /// （`maxScrollExtent > 0`）；xterm 的 `simulateScroll` 只作用于**备用屏**，
+  /// 所以只能在这里识别"有交互式程序在跑"，再由页面禁掉手指拖动滚动。
+  final ValueNotifier<bool> interactiveProgram = ValueNotifier<bool>(false);
+
+  static final RegExp _interactiveOn =
+      RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)h');
+  static final RegExp _interactiveOff =
+      RegExp(r'\x1b\[\?(?:1049|1000|1002|1003|47)l');
+
+  /// 入站数据的唯一入口：先扫私有模式，再交给终端渲染。
+  void _writeToTerminal(String data) {
+    if (data.contains('\x1b[?')) {
+      final enters = _interactiveOn.hasMatch(data);
+      final leaves = _interactiveOff.hasMatch(data);
+      if (enters && !interactiveProgram.value) {
+        interactiveProgram.value = true;
+      } else if (leaves && !enters && interactiveProgram.value) {
+        interactiveProgram.value = false;
+      }
+    }
+    terminal.write(data);
+  }
+
   TerminalSessionController({
     required this.connection,
     required this.identities,
@@ -214,7 +243,7 @@ class TerminalSessionController extends ChangeNotifier {
               ? const Utf8Decoder(allowMalformed: true)
               : const Latin1Decoder());
       _outputSubscription = decoded.listen(
-        terminal.write,
+        _writeToTerminal,
         onDone: _handleRemoteClosed,
         onError: (Object error) {
           _fail(SshFailure.from(error, connection));

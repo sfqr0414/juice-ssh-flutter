@@ -988,7 +988,22 @@ class _TerminalPageState extends State<TerminalPage> {
                           ? 0
                           : topInset,
                     ),
-                    child: _buildBody(),
+                    // 交互式程序（htop/vim）在跑时**手指拖动不滚动** —— 用户实测
+                    // "进 htop 不能滑（很好），但旋转到横屏又能滑了，转回竖屏还能滑"。
+                    // 根因是旋转让视口变矮，主屏回滚缓冲出现滚动余量；xterm 的
+                    // `simulateScroll` 只管备用屏，所以改用 `ScrollConfiguration`
+                    // 把手指拖动设备从内层 `Scrollable` 的拖动集合里去掉
+                    // （滚轮 / 程序化滚动 / 滚动条仍然可用）。交互式程序退出即恢复。
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _controller.interactiveProgram,
+                      builder: (context, interactive, child) => ScrollConfiguration(
+                        behavior: ScrollConfiguration.of(context).copyWith(
+                          dragDevices: interactive ? const {} : null,
+                        ),
+                        child: child!,
+                      ),
+                      child: _buildBody(),
+                    ),
                   ),
                 ),
                 if (position == 1 && _popupKeyboardVisible) _buildKeyRow(),

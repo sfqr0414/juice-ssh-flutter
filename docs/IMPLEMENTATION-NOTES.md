@@ -8817,3 +8817,60 @@ top: (position == 0 && _popupKeyboardVisible) ? 0 : topInset,
 
 本轮没有改动运行代码，只纠正了定位并把两路证据留档，避免下一个人（包括我）
 再去修备用屏。
+## 第 275 轮：交互式命令可滑动 —— 机制确认 + 按"识别交互式程序"实修
+
+第 274 轮把定位挪到主屏后，这轮补了对照实验，机制**确认**并可直接对上用户现象。
+
+### 机制（xterm `Buffer.resize` 缩容 + 游标位置）
+
+`buffer.dart:437-477` 缩容时，每一行都先看 `_cursorY > newHeight - 1`：成立就只
+`_cursorY--`，**不 `lines.pop()`**；游标降到新高度以内之后才开始 pop。
+于是"屏幕变矮时游标是否在底部"决定了回滚缓冲会不会留下多余行：
+
+* 我的测试服横幅只有 7 行左右、游标停在 `cursorY=7`，竖屏→横屏时
+  `lines` 跟着 `rows` 一起缩（`27 -> 17`），`max=0.0`，**拖不动**；
+* htop 把状态行画在**屏底**，游标就在底部 → 缩容时 pop 被整段跳过 →
+  缓冲区保留 40+ 行而视口只剩 17 行 → `maxScrollExtent > 0` → **能拖**。
+
+这同时解释了"刚进 htop 竖屏不能滑（那时缓冲正好一屏）、旋转后能滑、转回竖屏还能滑
+（横屏阶段 htop 的重绘又往主屏追加了行）"三条现象，也解释了第 270 轮为什么没修好：
+那次只处理了 `buffer.isAltBuffer`（备用屏），而 htop 跑在主屏上。
+
+### 修法（本轮落地）
+
+xterm 的 `simulateScroll` 只作用于**备用屏**，救不了主屏，所以改为**识别交互式程序**：
+
+1. `terminal_session.dart` 把入站数据的唯一入口从 `decoded.listen(terminal.write)`
+   换成 `_writeToTerminal`：扫描私有模式 —— `ESC[?1049h`（切备用屏，vim/less 用）、
+   `ESC[?47h`（老写法）、`ESC[?1000h/1002h/1003h`（**打开鼠标上报，htop 默认就开**），
+   对应 `...l` 复位；结果推进 `ValueNotifier<bool> interactiveProgram`；
+2. `terminal_page.dart` 用 `ValueListenableBuilder` + `ScrollConfiguration` 包住终端
+   body：交互式为真时把**手指拖动设备**从内层 `Scrollable` 的拖动集合里去掉
+   （`dragDevices: interactive ? const {} : null`），滚轮 / 程序化滚动 / 滚动条仍可用；
+   程序退出（收到 `...l`）即恢复。
+
+选它而不是"继续裁缓冲"的原因：裁主屏会连带吃掉进 htop 之前的回滚内容，
+而禁掉手指拖动是**非破坏性**的，效果相同。
+
+### 验证状态（如实）
+
+* 对照实验只跑出"不能滑"的一侧（测试服游标停在第 7 行，xterm 正常 pop，
+  `lines == rows`、`max=0.0`，拖动前后截屏墨迹分段完全一致），**没有**在设备上
+  复现出"能滑"的一侧 —— 复现需要"长缓冲 + 游标贴底"，而我的测试服横幅太短、
+  也不发交互式私有模式；
+* 因此本轮改动是**分析 + 代码级**（`flutter analyze` 通过），正向效果需要用户
+  在真机 htop 上复测：进 htop → 旋转横屏 → 拖动应无反应 → 转回竖屏仍应无反应；
+  退出 htop 后普通 shell 的回滚滚动应恢复。
+
+### 交付物
+
+四份 APK，SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73068531 字节），SHA-256：
+  `E31023B980AA0EB18698E36836704EAD6AA0D7B22205A73FF404A4818F8E9861`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `E10E6747342AA4B11D67DAEEA8782335C9830AE4D7383FF6B1A27C2A61FD10CD`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28654962 字节），SHA-256：
+  `FB75D0F2E9481B22E6873EB9697D50BF3C5E9BC668B849C09FF703D5B9EC89DB`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `A9A6E21992CA76D01CC234FD99D71CB7AF041BC64533987771A9DD231BF08AA2`。
