@@ -140,13 +140,21 @@ class _MainScreenState extends State<MainScreen> {
     // 原版把 Quick Connect 里 `[username@]hostname[:port]` 的用户名挂在一个
     // 临时身份上（`Connection.temporaryQuickConnectIdentity`，transient、不入库），
     // 只用于这一次会话。少了它，认证会以空用户名进行，服务端必然拒绝。
+    // 连接自己关联的身份必须排在前面：`ssh_service` 取用户名用的是"第一个非空"，
+    // 若把地址簿里的全部身份按原顺序平铺下去，别的身份会把用户名抢走（实测：快速
+    // 连接存下的 `juicequick` 被 `lab-key` 身份的 `juice` 顶掉，服务端日志
+    // `user='juice'`）。原版同样先按连接关联的身份尝试。
+    final linkedIds = connection.id == 0
+        ? const <int>[]
+        : await _db.connectionIdentityIds(connection.id);
     final identities = <Identity>[
       if (quickConnectUsername != null && quickConnectUsername.isNotEmpty)
         Identity(
           nickname: quickConnectUsername,
           username: quickConnectUsername,
         ),
-      ..._identities,
+      ..._identities.where((identity) => linkedIds.contains(identity.id)),
+      ..._identities.where((identity) => !linkedIds.contains(identity.id)),
     ];
     // `portforward.connection` 指向本连接的转发，随会话一起启动。
     final forwards = connection.id == 0
@@ -243,8 +251,29 @@ class _MainScreenState extends State<MainScreen> {
 
     // `save_for_future_use` 勾选时把这条连接真正落库（原版行为）。
     if (result.save) {
+      // Quick Connect 里 `[username@]hostname[:port]` 的用户名原本只挂在临时身份上
+      // （transient、不入库）。勾选保存后这条连接会留在地址簿和首页「常用」里，
+      // 用户名必须**跟着一起落库**：否则再次打开时 `ssh_service` 找不到带用户名的
+      // 身份，密码框会退化成「请输入 @address 的密码」，并且拿空用户名去认证 ——
+      // 密码输多少次都连不上。同名身份复用一份，避免反复快速连接堆出重复身份。
+      // 只建一个"纯用户名"身份（不带密码、不带私钥），对应原版的临时身份。
+      // 不能按用户名去复用已有身份：地址簿里可能已有用户名相同的**带私钥**身份
+      // （实测 `keylab` / `lab-key` 的用户名都是 `juice`），复用会把新连接链到
+      // 那把私钥上，认证方式都被改掉（连接列表里出现 `keylab: Used by 2
+      // connections` 就是这么来的）。
+      var identityIds = const <int>[];
+      final quickUsername = result.username?.trim() ?? '';
+      if (quickUsername.isNotEmpty) {
+        final identityId = await _db.saveIdentity(
+          Identity(nickname: quickUsername, username: quickUsername),
+        );
+        identityIds = <int>[identityId];
+      }
       // saveConnection 返回自增主键，落库后重新读回带 id 的实体。
       final id = await _db.saveConnection(result.connection);
+      if (identityIds.isNotEmpty) {
+        await _db.setConnectionIdentities(id, identityIds);
+      }
       final saved = await _db.connection(id);
       if (!mounted) return;
       await _load();

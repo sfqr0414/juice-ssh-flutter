@@ -235,15 +235,11 @@ enum AppThemeMode {
 
   static AppThemeMode fromValue(String? raw) {
     final parsed = int.tryParse(raw ?? '');
-    // 第 62 轮实测推翻了这里原先的推断（原先认为 `res/values-v29/arrays.xml` 把
-    // 取值覆盖成 `-1,1,2`，于是把 -1 当成"跟随系统"）。实测：原版与复刻的库里
-    // `theme:dark` 都是 `-1`，模拟器 `cmd uimode night` = no（浅色系统），而原版
-    // 连接编辑页正文底色采样为**纯黑 (0,0,0)**、文字 (190,190,190) —— 说明这个 -1
-    // 在原版里落到的是 **Dark**，而不是跟随系统。`res/values/arrays.xml` 的官方
-    // 取值只有 `3 = Automatic (system default)` / `1 = Light` / `2 = Dark`，-1 不在
-    // 表内，属旧版遗留值，原版对表外值回退到深色默认（其 Settings 那一行也显示 Dark，
-    // 与本复刻改完后一致）。
-    if (parsed == -1) return AppThemeMode.dark;
+    // `-1` 不在原版 `arrays.xml` 的取值表内（3 = Automatic / 1 = Light / 2 = Dark），
+    // 是旧版遗留值。第 62 轮在模拟器那份参考库里实测它落到 Dark；但用户反馈实际
+    // 使用的原版是**亮色**启动，新装即深色本身就是问题。因此这里把表外的 `-1`
+    // 一并归到 Light —— 这样从带 `-1` 的旧库升级上来也不会继续停在深色。
+    if (parsed == -1) return AppThemeMode.light;
     return AppThemeMode.values.firstWhere(
       (mode) => mode.value == parsed,
       orElse: () => AppThemeMode.automatic,

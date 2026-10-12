@@ -631,6 +631,10 @@ class _TerminalPageState extends State<TerminalPage> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           scrolledUnderElevation: 0,
+          // 原版终端页**没有返回箭头**：退出一律靠系统导航栏 / 返回手势
+          // （走 `_handleBackPressed` 的 `background_session` 三选提示）。
+          // Flutter 的 AppBar 默认会自动补一个 leading 返回按钮，这里关掉。
+          automaticallyImplyLeading: false,
           // 状态栏**底色**由 `_syncStatusBar()` 走平台通道直接设窗口（原因见那里）：
           // 原版终端页 y0..127 = `#073642`，正是 `terminal_themes.json` 里
           // `Solarized Dark` 的 ANSI 0 `#FF073642`；两侧 y128 起（终端画布）都是

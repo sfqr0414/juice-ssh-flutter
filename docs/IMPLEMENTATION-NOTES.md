@@ -7407,3 +7407,79 @@ REGRESSION_OK'` 里的空格被 adb 拆成了参数（应用忠实转发了它�
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `64712968949EE0C015514330CA6AC933496AB00554E59E47E71662989275CACC`。
+## 第 253 轮：用户报的 5 个缺陷 —— 1/2/3 已修并验证
+
+用户反馈五条，本轮处理前三条（4、5 见下轮）。
+
+### 一、启动是深色，应亮色
+
+根因两处：`juice_database.dart` 的 `configfield` 默认值 `('theme:dark', '-1')`（逐条抄自参考
+机那份库，是旧版遗留值，不在原版 `arrays.xml` 取值表 `3=Automatic/1=Light/2=Dark` 内），
+以及 `juice_colors.dart` 的 `fromValue` 把 `-1` 映射成 Dark。用户实际使用的原版是**亮色**
+开箱，故两处都改成 Light：默认值写 `'1'`，`-1` 也归到 Light（这样从带 `-1` 的旧库升级
+上来不会继续停在深色）。
+
+验证（`fix_home.png`）：状态栏与 AppBar `(240,210,53)`、卡片间与底部底色 `(255,255,255)`。
+此前同一位置是深色。
+
+### 二、Quick Connect 的用户名丢失，密码框退化成 `@address` 且永远连不上
+
+两个根因：
+
+1. 勾选「Save connection for future use」时，`_quickConnect` 只 `saveConnection`，
+   Quick Connect 的用户名原本只挂在**临时身份**上（transient、不入库），于是连接落库了、
+   用户名没落库；
+2. `_openConnection` 把地址簿里**全部**身份按原顺序传给终端，而 `ssh_service`（:245-258）
+   取用户名用的是"第一个非空用户名"——别的身份会把用户名抢走。
+
+修法：保存时新建一个**纯用户名身份**（不带密码、不带私钥，对应原版的临时身份）并用
+`setConnectionIdentities` 关联到该连接；同时 `_openConnection` 把该连接**关联的身份排在
+最前面**。
+
+**中途我自己引入过一个 bug 并已改正**：第一版按"用户名相同就复用已有身份"来避免重复，
+结果匹配到用户名为 `juice` 的**带私钥**身份 `keylab`，把新连接链到那把私钥上（连接列表
+里出现 `keylab: Used by 2 connections` 就是证据，服务端日志也仍是 `user='juice'`）。
+现已改为始终新建纯用户名身份。
+
+验证（连接列表副标题 = 该连接关联身份的昵称）：
+
+```
+y= 643  10.0.2.2 / lab-key      （原有）
+y=1024  10.0.2.2 / lab-key
+y=1214  10.0.2.2 / keylab
+y=1405  10.0.2.2 / juiceww      （新：Quick Connect juiceww@10.0.2.2:2222 保存而来）
+```
+
+身份列表新增 `juiceww — Used by 1 connection`，而 `keylab`（2）/`lab-key`（1）计数未变，
+说明既落库成功、也没有再抢用别人的身份。
+
+**验证局限（如实记录）**：本机地址簿里有带私钥的身份，公钥认证会先成功，因此在这台机器上
+复现不出密码框（服务端日志 `user='juice'` 来自持有私钥的那个身份，这是正确行为）。用户那种
+全新安装没有任何身份，会走密码路径，用户名即取自上面落库的身份，因此密码框会显示
+`username@address`、认证也会用该用户名。
+
+### 三、终端页不该有返回箭头
+
+原版终端页退出一律靠系统导航栏 / 返回手势（走 `_handleBackPressed` 的
+`background_session` 三选提示）。给该 `AppBar` 加 `automaticallyImplyLeading: false`。
+
+验证：终端页节点里 `Back` 数量 = **0**；按系统返回键仍弹出
+`Do you want to leave this session running in the background?`（CANCEL / NO / YES）。
+
+### 四、待办（下一轮）
+
+4. 快捷键键盘（终端页底部键位里的 `Toggle Keyboard`，节点 `[945,2245][1080,2337]`）
+   点击不弹键盘；设置里「弹出键盘的位置 = Above Terminal」布局显示不全。
+5. 终端页无法选中文本复制（代码里已有 `selection` 与复制菜单，需查为何选不中）。
+
+### 五、本轮测试脚本自身的三处失误（如实记录）
+
+* Quick Connect 的「保存」复选框**默认已勾选**，我每次都去点它，等于把它取消，导致两次
+  保存都没落库（这也是排查绕了一圈的原因）；
+* 连接失败的错误框会吞掉 `Back`（终端页 `PopScope`），必须先关框；
+* 一次 `Back` 把应用退到桌面，后续点击全部落空。
+
+### 六、交付物
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `DDDE92CCB482D3052689CCAC7A19CE29D54CD9C059C255725B531B2985F56708`。

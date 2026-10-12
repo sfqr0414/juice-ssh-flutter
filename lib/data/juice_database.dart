@@ -281,7 +281,10 @@ class JuiceDatabase {
     ('pinlock:pin', ''),
     ('changelog:seen_auth_migration_message', 'false'),
     ('version:code', '0'),
-    ('theme:dark', '-1'),
+    // 参考机那份库这里是遗留值 `-1`（第 62 轮实测它在原版里落到 Dark）。但用户反馈
+    // 实际使用的原版是**亮色**启动，且 `-1` 不在原版 `arrays.xml` 的取值表内
+    // （3 = Automatic / 1 = Light / 2 = Dark），属旧版遗留。按开箱默认改成 Light。
+    ('theme:dark', '1'),
     ('terminal:margin', '0'),
     ('terminal:margin_selection', '0'),
     ('ssh:agent', 'false'),
