@@ -88,6 +88,18 @@ Future<void> fill(WidgetTester tester, int index, String text) async {
   await tester.pump(const Duration(milliseconds: 400));
 }
 
+/// 当前页面上所有可见的 Text 文案（字段值由 EditableText 渲染，不在此列，
+/// 断言字段内容请用 find.text / find.textContaining）。
+List<String> visibleTexts(WidgetTester tester) {
+  return find
+      .byType(Text)
+      .evaluate()
+      .map((e) => (e.widget as Text).data)
+      .whereType<String>()
+      .where((s) => s.trim().isNotEmpty)
+      .toList();
+}
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
