@@ -312,12 +312,27 @@ def _session_loop(channel, tag: str) -> None:
     # 先关掉做证伪，确认症状是否随它出现（加 `--agent-probe` 才启用）。
     if '--agent-probe' in sys.argv:
         _probe_agent(channel, tag)
+    if '--alt-screen' in sys.argv:
+        # 备用屏 + DA1（主设备属性）查询，用来判定三件事：
+        #   1. 客户端是否**只在被查询后**才回 DA 应答（不该主动发），
+        #   2. 回的到底是 `ESC[?1;2c` 还是别的序列，
+        #   3. 备用屏里键入的字节原样是什么（vi 就是这种模式）。
+        channel.sendall(
+            b'\x1b[?1049h\x1b[2J\x1b[H'
+            b'ALT-SCREEN MODE (simulates vi)\r\n'
+            b'line2: red green yellow blue\r\n'
+        )
+        channel.sendall(b'\x1b[24;1H-- ALT --')
+        print('%s 已进备用屏(1049h)，接着发送 DA1 查询 ESC[c' % tag, flush=True)
+        channel.sendall(b'\x1b[c')
+        print('%s DA1 查询已发出，等客户端应答' % tag, flush=True)
     while True:
         data = channel.recv(4096)
         if not data:
             print('%s 客户端关闭通道' % tag, flush=True)
             break
-        print('%s 收到 %d 字节: %r' % (tag, len(data), data[:120]), flush=True)
+        print('%s 收到 %d 字节: %r hex=%s'
+              % (tag, len(data), data[:120], data[:32].hex()), flush=True)
         # 回显：把输入原样送回（`\r` 换成 CRLF，模拟终端行为）
         channel.sendall(data.replace(b'\r', b'\r\n'))
 

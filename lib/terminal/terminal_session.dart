@@ -260,10 +260,30 @@ class TerminalSessionController extends ChangeNotifier {
 
   // ---------------------------------------------------------- 终端回调 --
 
+  /// 设备属性（DA）应答：`ESC[?1;2c` / `ESC[>0;276;0c` 这类。
+  ///
+  /// xterm 会替终端回答设备属性查询（`ESC[c` → `ESC[?1;2c`），但它自己的解析器把
+  /// **任何**以 `c` 结尾的 CSI 都当查询 —— 分不清自己那条应答和查询的区别。于是
+  /// 远端 pty 只要处于回显状态（shell 提示符下、vi 启动早期等），应答被回显回来就
+  /// **再触发一次应答**，形成无限 ping-pong。设备实测（`tools/_sshd.py --alt-screen`，
+  /// 服务端日志里刷满 `收到 7 字节: b'\x1b[?1;2c'`）：vi 拿到的是这串垃圾当输入，
+  /// 这正是用户报的"vi 不能输入、屏幕上出现字面 `^[[?1;2c`、按 `:` 也进不了命令模式"。
+  ///
+  /// 所以把这类应答**整条丢掉**，循环两个方向都断掉（我们不回答 → 远端没得回显；
+  /// 万一远端回显过来，xterm 再生成的应答同样被丢掉）。原版 JuiceSSH 的老终端也不做
+  /// 这套应答，丢掉反而更接近 1:1。
+  static final RegExp _deviceAttributesAnswer =
+      RegExp(r'^\x1b\[[>?][0-9;]*c$');
+
   /// 终端要往远端发送数据。
   void _handleTerminalOutput(String data) {
     final session = _session;
     if (session == null || _state != TerminalSessionState.connected) return;
+
+    if (_deviceAttributesAnswer.hasMatch(data)) {
+      debugPrint('JuiceSshDa: 丢弃设备属性应答 ${data.codeUnits.length} 字节');
+      return;
+    }
 
     var payload = data;
 
