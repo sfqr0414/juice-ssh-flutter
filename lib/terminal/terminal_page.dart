@@ -106,6 +106,9 @@ class _TerminalPageState extends State<TerminalPage> {
   final TerminalController _terminalController = TerminalController();
   final FocusNode _terminalFocus = FocusNode();
 
+  /// `Toggle Keyboard` 键维护的软键盘显隐状态（理由见 `_toggleSoftKeyboard`）。
+  bool _softKeyboardVisible = false;
+
   /// 额外键行是否停在功能键页。
   bool _showingFunctionKeys = false;
 
@@ -312,14 +315,19 @@ class _TerminalPageState extends State<TerminalPage> {
   // ---------------------------------------------------------- 键盘 --
 
   void _toggleSoftKeyboard() {
-    // 判断依据用"软键盘此刻是否真的可见"，而不是 `_terminalFocus.hasFocus`：终端那个
-    // 隐藏输入框通常一直持有焦点（用户手动把键盘划下去之后也一样），按焦点判断会让
-    // 这个键**只会收起键盘、永远弹不出来** —— 正是用户报的第 4 条。
-    final keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
-    if (keyboardVisible) {
+    // 用自己维护的**显式状态**判断，不看 `_terminalFocus.hasFocus`，也不看
+    // `MediaQuery.viewInsetsOf(context)`：
+    //   * 那个隐藏输入框长期持有焦点，按焦点判断会让这个键只会收起、永远弹不出来；
+    //   * 实测（`dumpsys input_method` 的 `mInputShown`）在终端页这个 context 下
+    //     `viewInsets.bottom` 读到的始终是 0，于是两次点击都走"显示"分支，
+    //     第二次点击收不起来。
+    // 现在：一次点击显示、再点一次收起，行为确定。
+    if (_softKeyboardVisible) {
+      _softKeyboardVisible = false;
       _terminalFocus.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
+      _softKeyboardVisible = true;
       _terminalFocus.requestFocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.show');
     }
@@ -585,6 +593,10 @@ class _TerminalPageState extends State<TerminalPage> {
       barrierColor: JuiceDialogColors.barrier,
       builder: (dialogContext) => JuiceAlertDialog(
         title: s('background_session'),
+        // 必须显式给正文内边距：`JuiceAlertDialog` 的 `contentPadding` 为空时正文会
+        // 贴到面板边缘（用户报的"排版左边距没有起效"）。同一套对话框在
+        // `juice_dialogs.dart` 里每一处都传了 `messageContentPadding`，只有这里漏了。
+        contentPadding: JuiceAlertDialog.messageContentPadding,
         content: Text(s('background_session_battery_warning')),
         actions: <Widget>[
           JuiceDialogAction(
@@ -665,7 +677,6 @@ class _TerminalPageState extends State<TerminalPage> {
           children: [
             Column(
               children: [
-                if (_selectingStart || _selectingEnd) _buildSelectionBanner(),
                 if (position == 0)
                   // 终端页是 `extendBodyBehindAppBar: true`（body 从 y=0 开始），
                   // 键位条放到终端上方时会被状态栏盖掉上半截 —— 用户报的
@@ -678,6 +689,9 @@ class _TerminalPageState extends State<TerminalPage> {
                   ),
                 Expanded(child: _buildBody()),
                 if (position == 1) _buildKeyRow(),
+                // 选择提示条在**快捷键盘的底端**（屏幕最下方），与原版一致。
+                // 此前它挂在 Column 最前面，跑到了屏幕顶端（用户报的第 1 条）。
+                if (_selectingStart || _selectingEnd) _buildSelectionBanner(),
               ],
             ),
             // 教程层盖在终端之上（原版把它 addView 到根布局并 bringChildToFront，
