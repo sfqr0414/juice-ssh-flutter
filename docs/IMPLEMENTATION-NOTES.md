@@ -7338,3 +7338,72 @@ contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `64712968949EE0C015514330CA6AC933496AB00554E59E47E71662989275CACC`。
+## 第 252 轮：六大核心功能回归走查（终端以服务端日志为地面真值）
+
+本轮不改源码，只做一遍端到端走查，把「可安装运行并验证」这句落到具体证据上。
+
+### 一、首页与连接管理
+
+首页七张卡片的节点与坐标：`Quick Connect` `[42,317][1038,501]`、
+`Frequently Used` `[42,543][1038,881]`、`Manage Connections` `[42,923][1038,1107]`、
+`Unlock Pro Features` `[42,1149][1038,1333]`、`Settings` `[42,1375][1038,1559]`、
+`Help` `[42,1601][1038,1784]`、`Plugins` `[42,1826][1038,2010]`。
+
+连接页顶部是三个标签的页签条 `[0,275][1080,359]`（`Connections / Port Forwards / Identities`），
+**选中项的名字在合并节点里排在最前**（切到身份页后该节点变成 `Identities\nConnections`），
+内容区左右滑动可翻页；页签下方依次是分组行 `lab-group` 与连接行 `10.0.2.2`（副标题 `lab-key`）。
+
+### 二、身份与密钥
+
+身份页：`keylab`（`Used by 1 connection`）、`lab-key`（`Used by 1 connection`）
+以及右下 `New Identity` 浮动按钮 `[891,2148][1038,2295]`。
+
+### 三、终端：服务端日志为证
+
+从列表点进终端后，测试 sshd 的记录是：
+
+```
+#7 公钥认证 user='juice' type=ssh-rsa -> 成功
+#7 通道请求 kind=session
+#7 已发样本横幅（418 字节）
+#7 pty 请求 (…, b'linux')
+#7 >>> 客户端请求 shell（会话已建立）
+#7 收到 1 字节: b'e'
+#7 收到 1 字节: b'c'
+#7 收到 1 字节: b'h'
+#7 收到 1 字节: b'o'
+#7 收到 1 字节: b'\r'
+```
+
+公钥认证、PTY（TERM=linux）、shell 与**键盘 → PTY 通路**全部打通，且是逐字节送达。
+日志里只到 `echo` 而没有后面的 `REGRESSION_OK`，原因是 `adb shell input text 'echo
+REGRESSION_OK'` 里的空格被 adb 拆成了参数（应用忠实转发了它收到的每一个字节），
+不是终端的问题。
+
+另外：**这次连接没有再弹主机校验对话框**，主机密钥持久化正常 —— 第 249 轮那处自我更正
+（当时判断「未持久化」是被一次未完成的点击误导）由此再次得到确认。
+
+### 四、设置、代码片段与 known hosts 的入口
+
+设置页节点：`Dark Theme` `[0,367][1080,551]`、`General` `[0,275][1080,887]`（内含
+`Manage Snippets` `[0,551][1080,719]`、`Amazon EC2 Link`）、`Security Lock` →
+`App Security`（内含 `Clear known hosts` `[0,1162][1080,1346]`）、
+`SSH Agent Forwarding`、`Theme / Colors`、`Font`。
+即代码片段的管理入口是 `General → Manage Snippets`，known hosts 的入口是
+`App Security → Clear known hosts`。
+
+### 五、本轮脚本自身的两次失误（如实记录）
+
+1. 页签条的点按：`input tap 540 317` 没有切到「端口转发」（点 `900 317` 切身份页是成功的），
+   改用内容区横滑 `input swipe 800 600 200 600 300` 翻页成功 —— 但一次手势跨了两页。
+2. 先用三次 `Back` 离开页面，结果退出了应用，导致没找到 `Settings` 入口；改为只按一次
+   `Back` 回到首页后正常进入。
+
+两处都是脚本导航问题，与应用的布局或交互无关。
+
+### 六、交付物
+
+本轮无源码改动，APK 与上一轮相同。
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `64712968949EE0C015514330CA6AC933496AB00554E59E47E71662989275CACC`。
