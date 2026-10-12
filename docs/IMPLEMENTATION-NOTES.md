@@ -9933,3 +9933,66 @@ JuiceSmoke: ready=true Scaffold=1 InkWell=6 widgets=789
   `tester.ensureVisible` 在没有 Scrollable 祖先的控件上抛异常 ——
   需打印输出中段确认，并改为 try/catch 或 `scrollUntilVisible`；
 * 这一段所有改动都只在 `integration_test/`，**不影响 `dist/` 交付物**。
+## 第 341-344 轮：修掉一个真实 UI 缺陷（重复 heroTag）并重出四份发布签名包
+
+### 缺陷是怎么被发现的
+
+`integration_test` 的端口转发用例出现怪现象：**所有断言都通过**
+（`端口转发列表含 pf1 = true`），测试却报 `Some tests failed`，并提示
+"See exception logs above"。把输出中段（而不是尾部）打出来才看到真正原因：
+
+```text
+══╡ EXCEPTION CAUGHT BY SCHEDULER LIBRARY ╞══
+There are multiple heroes that share the same tag within a subtree.
+In this case, multiple heroes had the following tag: <default FloatingActionButton tag>
+```
+
+Flutter 只要捕获到框架异常就判定测试失败 —— 这就解释了那个"自相矛盾"的结果。
+
+### 成因与影响
+
+"连接管理"页有三个标签页（Connections / Port Forwards / Identities），每个标签页各带一个
+`FloatingActionButton`，**都用默认 hero tag**；切换瞬间新旧 FAB 共存于同一 PageRoute 子树
+→ 触发 Hero 断言。共 5 处构造点：
+`lib/widgets/pager_list.dart:102`、`lib/screens/groups_screen.dart:326`、
+`lib/screens/identities_screen.dart:595`、`lib/screens/port_forwards_screen.dart:559`、
+`lib/screens/snippets_screen.dart:267`。
+
+影响：debug 构建每次都抛框架异常（红屏级）；release 下断言被剥离、用户不会崩，
+但 FAB 的 Hero 动画行为未定义（位置/动画可能跳变）。
+
+### 修法
+
+5 处统一加 `heroTag: null`（放弃 FAB 的 Hero 动画这一纯装饰效果，换取结构正确）。
+验证：
+
+* `flutter analyze lib` → **No issues found!**（error 行数 0）；
+* 重跑集成测试 → **All tests passed!**，且链路断言保持全绿
+  （`身份保存后 = true`、`端口转发列表含 pf1 = true`）。
+
+### 两条方法教训（第一次尝试因此白费一轮）
+
+1. **`flutter analyze` 的通过判定不能用 "No issues found"**：它还会输出
+   `info -` 这类 lint 提示，结尾是 "N issues found"。我第一次拿"必须出现 No issues found"
+   当条件，于是**只有 lint、没有 error** 的正常结果被判成失败，脚本自动
+   `git checkout -- lib` 把正确的修复丢掉了。正确判定是：**不出现 `error -` 即通过**。
+2. **`dart format` 必须只针对改动文件**：`dart format lib` 一次重排了 38 个文件。
+
+### 重出四份发布签名包（含本次修复）
+
+| 文件 | versionCode / 版本 | min / target | 大小 | SHA-256 |
+| --- | --- | --- | --- | --- |
+| `-arm64-v8a.apk` | 2200 / 3.2.2 | 26 / 29 | 30,915,416 B | `9AF0E0A3C72CF8240B885E93683C4A29D2DCABA3CD7E580CE1188849D8EA9644` |
+| `-armeabi-v7a.apk` | 1200 / 3.2.2 | 26 / 29 | 28,652,194 B | `76CCF51A3CEA1D2C2FC10A86B6997D300BAA031A9A481DFD6B2FBD6CF4CA2D61` |
+| `-x86_64.apk` | 4200 / 3.2.2 | 26 / 29 | 32,367,145 B | `165673F111F1BDF71AA253F9765AABDFD04B4A0357462D9DE3A1E07142608EA1` |
+| `juice-ssh-flutter-3.2.2.apk`（fat） | 200 / 3.2.2 | 26 / 29 | 73,065,767 B | `024BFFD3682C18A26C3D0DF1C0BABE8652BEF4096011D304EFD63C2A8307C707` |
+
+签名者仍为 `CN=JuiceSSH Flutter Clone, O=Local, C=CN`（同一把发布密钥 → 可从上一版
+发布签名包直接覆盖升级；若设备上仍是更早的 **debug 签名**包则需先卸载）。
+回归：`flutter test` 20 个单元用例全绿；工作区干净。
+
+### 意义
+
+这是本项目**第一个由自建测试载体抓出来的真实缺陷**：此前几十轮 adb 坐标点击完全看不到
+框架异常（坐标法只能看到画面，看不到断言）。第 311 轮"停坐标法、改走 `integration_test`"
+的判断至此有了实证回报。
