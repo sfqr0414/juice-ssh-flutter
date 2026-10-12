@@ -486,17 +486,79 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// 布局结束后量真实几何 + 缓冲内容（`JuiceSshGeom3`）。
+  ///
+  /// 构建期的 `JuiceSshGeom` 读到的行列数是**旧值**（xterm 在布局里才 resize），
+  /// 所以旋转问题必须看这一行。`text` 是整块缓冲的开头（`/` 代表换行）：
+  /// 屏幕空白时用它区分"缓冲被清空了"和"只是没画出来"。
+  void _afterLayout(String tag) {
+    if (!mounted) return;
+    final terminal = _controller.terminal;
+    final trimmed = _trimTrailingBlankLines(terminal);
+    _clampTerminalScroll(extraShift: trimmed);
+    final position =
+        _terminalScroll.hasClients ? _terminalScroll.position : null;
+    var head = terminal.buffer.getText().toString().replaceAll('\n', '/').trim();
+    if (head.length > 44) head = head.substring(0, 44);
+    debugPrint(
+      'JuiceSshGeom3($tag): cols=${terminal.viewWidth} '
+      'rows=${terminal.viewHeight} lines=${terminal.buffer.lines.length} '
+      'cursorY=${terminal.buffer.absoluteCursorY} trimmed=$trimmed '
+      'viewport=${position?.viewportDimension.toStringAsFixed(1)} '
+      'max=${position?.maxScrollExtent.toStringAsFixed(1)} '
+      'pixels=${position?.pixels.toStringAsFixed(1)} text=$head',
+    );
+  }
+
+  /// 裁掉缓冲区**末尾的空行**，让长度回到正好一屏；返回裁掉的行数。
+  ///
+  /// xterm 的 `Buffer.resize`（`lib/src/core/buffer/buffer.dart:437-477`）在宽度变化
+  /// 触发 `reflow` 之后只做 `while (reflowResult.length < newHeight) add 空行`，
+  /// **不会**在 reflow 结果比 `newHeight` 长时截断 —— 于是缓冲区比可视区多出若干行。
+  /// 而 xterm 是粘底的（屏幕取最后 `viewHeight` 行、`_maxScrollExtent = 总高 − 视口高`），
+  /// 多出来的行就把**第 0 行顶出屏幕**。设备实测：旋转回竖屏后
+  /// `cols=50 rows=45 lines=46 max=10.5 pixels=10.5`，首行墨迹从 135 掉到 128
+  /// （= 内容上移、被状态栏切掉）；第 260 轮"连上后内容被切掉、点一下键位条才恢复"
+  /// 是同一份原因（当时靠那次额外 resize 偶然把偏移抹平）。
+  ///
+  /// 只裁**末尾且为空**的行：真正的回滚缓冲（有内容的行）一律不动，
+  /// 光标上方的内容也不动。
+  int _trimTrailingBlankLines(Terminal terminal) {
+    final buffer = terminal.buffer;
+    final viewHeight = terminal.viewHeight;
+    final extra = buffer.lines.length - viewHeight;
+    if (viewHeight <= 0 || extra <= 0) return 0;
+    var removable = 0;
+    for (var y = buffer.lines.length - 1; y >= viewHeight; y--) {
+      if (buffer.lines[y].getText().trim().isNotEmpty) break;
+      removable++;
+    }
+    for (var i = 0; i < removable; i++) {
+      buffer.lines.pop();
+    }
+    return removable;
+  }
+
   /// 视口尺寸变化后把滚动位置重新贴底（丢掉 xterm 残留的分数偏移）。
   ///
   /// 只在用户本来就贴在底部时做：正在翻历史的人不该被拽回来。旋转屏幕、
   /// 软键盘起落、键位条切换都会走到这里 —— 用户报的"终端屏幕旋转内容显示不正常"
   /// 就是旋转后残留了几个像素的偏移（实测首行墨迹 135 → 128，被状态栏切掉）。
-  void _clampTerminalScroll() {
+  void _clampTerminalScroll({int extraShift = 0}) {
     if (!mounted || !_terminalScroll.hasClients) return;
     if (!_terminalStuckToBottom) return;
     final position = _terminalScroll.position;
-    if (position.pixels != position.maxScrollExtent) {
-      position.jumpTo(position.maxScrollExtent);
+    final terminal = _controller.terminal;
+    var target = position.maxScrollExtent;
+    // 刚裁掉末尾空行时，`maxScrollExtent` 要等下一次布局才会变小，所以先把目标
+    // 偏移按裁掉的行数下移，画面立刻就对。
+    if (extraShift > 0 && terminal.viewHeight > 0) {
+      final cellHeight = position.viewportDimension / terminal.viewHeight;
+      target = (target - extraShift * cellHeight)
+          .clamp(0.0, position.maxScrollExtent);
+    }
+    if (position.pixels != target) {
+      position.jumpTo(target);
     }
     _terminalStuckToBottom = true;
   }
@@ -1147,12 +1209,13 @@ class _TerminalPageState extends State<TerminalPage> {
               // 那时 xterm 才算完新的行列数。
               final size = Size(constraints.maxWidth, constraints.maxHeight);
               if (_terminalLayoutSize != size) {
-                if (_terminalLayoutSize != null) {
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _clampTerminalScroll(),
-                  );
-                }
+                final first = _terminalLayoutSize == null;
                 _terminalLayoutSize = size;
+                // 布局**之后**再量一次：xterm 的 resize 发生在布局里，构建期读到的
+                // 行列数永远落后一拍（旋转问题的诊断就卡在这里）。
+                WidgetsBinding.instance.addPostFrameCallback(
+                  (_) => _afterLayout(first ? 'first' : 'resize'),
+                );
               }
               // 一次性几何诊断：用来定位"终端内容不从顶端开始"（用户报的第 1 条）。
               // 画布确实从 y=128 起（与原版一致），但第一行内容落在 y=241/274，

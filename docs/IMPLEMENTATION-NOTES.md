@@ -8306,3 +8306,93 @@ release 下会被吞掉，只留一块空画布 —— 这正是 `bands=0` 的�
   `70E123759EDC607160BDD485A7A41A40BD910B17C8D6D63529ECBE1AC8BF1770`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `D1515462C6E3389016ECF11501CBCA7D443FDD29EA63BE26D449650BC09B9561`。
+
+## 第 263 轮：屏幕旋转修好（缓冲区多一行）＋ vi 无法输入只查清客户端侧
+
+### 旋转：先拿到"布局之后"的真值，才找到根因
+
+上一轮的几何日志打在**构建期**，读到的行列数是 xterm resize **之前**的旧值，所以
+一直在猜"到底有没有 resize"。这轮把日志挪进 `addPostFrameCallback`
+（`JuiceSshGeom3`），并且把**缓冲区内容**一起打出来。设备实测（模拟器 API 36）：
+
+```
+连上后            cols=50  rows=41 lines=41 cursorY=7 viewport=707.5 max=0.0  text=JUICE TERMINAL SAMPLE/...
+横屏              cols=105 rows=17 lines=17 cursorY=7 viewport=293.4 max=0.0  text=JUICE TERMINAL SAMPLE/...
+转回竖屏（故障）  cols=50  rows=45 lines=46 cursorY=8 viewport=771.5 max=10.5 pixels=10.5
+```
+
+三点结论：
+
+1. **resize 一直都在发生**（横屏确实按 865x293 重算成 105x17），旧日志只是"慢一拍"；
+2. 旋转过程中**没有任何 Flutter 异常**（`logcat` 里 `E/flutter|Exception|RangeError|
+   Failed assertion` 全空），所以不是布局抛异常导致空画布；
+3. 故障点是 `lines=46` 比 `rows=45` **多一行**，而 xterm 是粘底的
+   （`_maxScrollExtent = 总高 − 视口高`、`_stickToBottom` 时把 `pixels` 顶到
+   `maxScrollExtent`），于是**第 0 行被顶出屏幕**、内容整体上移 10.5px ——
+   墨迹从 135 掉到 128、被状态栏切掉，就是用户看到的"旋转后显示不正常"。
+
+多出来的那一行的来源在 xterm `lib/src/core/buffer/buffer.dart:437-477`：宽度变化
+走 `reflow(lines, oldWidth, newWidth)` 之后，只做
+`while (reflowResult.length < newHeight) add 空行`，**没有**在结果比 `newHeight`
+长时截断。所以 45 行里那 7 行内容重新折行成 8 行后，缓冲区就成了 46 行。
+（第 260 轮"连上后内容被切掉、点一下键位条才恢复"也是同一份原因，当时是被一次
+额外的 resize 偶然抹平了。）
+
+改法（`terminal_page.dart`）：布局结束后 `_trimTrailingBlankLines()` 只裁**末尾且
+为空**的行（有内容的行、光标上方的内容一律不动，真正的回滚缓冲不受影响），
+`_clampTerminalScroll(extraShift:)` 再把滚动位置按裁掉的行数下移同样的高度
+（`maxScrollExtent` 要等下一次布局才变小，所以必须自己补偿）。
+
+设备实测（同一次运行，竖屏状态栏之下量首行墨迹）：
+
+| 截图 | 状态 | 首行墨迹 y |
+| --- | --- | --- |
+| `o_term.png` | 原版 JuiceSSH | 137 |
+| `h1_port.png` | 本复刻，连上终端 | 135 |
+| `h3_port2.png` | 本复刻，**横屏再转回竖屏后** | **135**（改前是 128） |
+
+也就是说旋转一圈回到竖屏，首行位置与刚连上时完全一致，不再有 7px 上移。
+横屏本身的内容也是好的（`text=JUICE TERMINAL SAMPLE/...` 一直在缓冲区里）。
+
+### vi 里无法输入：客户端侧三件事已查清，但仍未在设备上复现
+
+用户原话：`使用vi命令不能输入，行列显示 2c^[[?1;2c0,0-1 使用键盘按:也无法切换成命令模式`。
+
+查证结果（都在源码/接口层面确凿）：
+
+1. **`:` 不在弹出键盘里**：`hacker_keyboard.dart` 的按键只有
+   `esc` `/` `|` `-` `home` `end` `pgup` `pgdn` 四个方向键 `tab` `ctrl` `alt`
+   `F1`–`F12`（与原版 hacker keyboard 一致），所以 `:` 只能来自系统输入法；
+2. **Ctrl/Alt 是"一次性"的**：`keyInput(...)` 之后会把两个锁定状态一起清掉
+   （`terminal_session.dart:379-387`），与原版 `keyboardPress` 尾部调用 `n()`
+   的行为一致 —— 不存在"Ctrl 卡住导致怎么按都输不进去"；
+3. **`^[[?1;2c` 不是复刻画上去的**：xterm 的
+   `Terminal.sendPrimaryDeviceAttributes()`（`terminal.dart:533`）把应答交给
+   `onOutput`，而本复刻把 `onOutput` 接到 `_handleTerminalOutput`
+   （`terminal_session.dart:264-281`）→ `session.write()`，即**发给远端**。
+   所以屏幕上出现这串，是**远端把终端的应答回显了**（终端类型查询发生在 pty
+   还开着 echo 的时候就会出现，与 `$TERM`/启动时机有关）。
+
+**还没做到的**：测试服 `tools/_sshd.py` 只是回显服务器，没有备用屏程序，
+模拟器上跑不出 `vi`；我尝试用 `adb shell input text ':'` 注入一次，sshd 日志里
+**没有**收到任何字节 —— 但那一次输入法并未处于弹出状态，不能算作"输入路径有问题"
+的证据，所以这条**既没证实也没排除**，下一轮按下面两步接着做：
+
+1. 给 `tools/_sshd.py` 加 `--alt-screen`：进备用屏 + 发 `ESC[c`（DA1 查询）+ 画一行
+   状态行，然后用 sshd 日志里的原始字节判定：客户端有没有**主动**发 DA 应答
+   （应只在被查询后发一次）、按 `:` 到底发出的是不是 `0x3A`、Esc/方向键是否正确；
+2. 复现时先确认输入法真的弹出（`dumpsys input_method` 的 `mInputShown=true`）
+   再注入，避免这次这种"没弹出所以没字节"的假阴性。
+
+### 交付物
+
+四份 APK（`--split-per-abi` 三套 ABI + fat），SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `CE95913423F1961C200E0B9B86AE419BB63588982F1E867CC4595B3BB0BAF85E`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `57EAACD42D0E4091CF2C80D9B1FD93B7F6D85AEA0FA805F2DA36924C66E9C926`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `37A1DFD00BE5AD316D852CDDDB542E8836EBF85632A0D23D33518C9B8CC8E17E`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `486B1DCF861746A989FD6CB08F1D84BFBF2B84C01B7899CAB45B656B5C4D0D9E`。
