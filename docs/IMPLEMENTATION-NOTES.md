@@ -8160,3 +8160,100 @@ scrollback=0`），不会再触发折行重排。
   `A7B3FB804B21149CA3AE2835437AB0D8A799009DA724A4E0D8FA744411CC4E0E`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `4762306ACFDB6A4D4D3B3C29261D3CA8BE92FAB18FD9F11C5F07C8350C2DA04F`。
+
+## 第 261 轮：用户新报三条 —— 状态栏观感 / 连上自动弹键盘 / 旋转与 htop 滑动
+
+用户原话：
+
+1. `状态栏没有和终端页面背景颜色一致，现在状态栏感觉上了一层遮罩似的。`
+2. `原版连接成功进终端页面会自动弹出输入键盘（表示用户可以输入命令了）。`
+3. `终端屏幕旋转内容显示不正常。且进入交互命令时比如 htop 仍然可以上下滑动，和原版不一致`
+
+### 第 2 条：连上自动弹出输入法 —— 已修，设备实测通过
+
+改前：连上后不做任何操作，`dumpsys input_method` 的 `mInputShown=false`
+（与本复刻"连上不弹键盘"的行为一致）。改后：**`mInputShown=true`**。
+
+实现：`_onSessionChanged` 里识别 `connecting → connected` 这个跃迁，调用
+`_showSoftKeyboard()`（把 `_toggleSoftKeyboard` 的显示分支抽出来复用：先
+`requestFocus()`，等 80ms 再 `TextInput.show`）。只在这个跃迁上做，从通知栏
+回到一个**已经在跑**的会话（首次通知时状态就是 `connected`）不会平白弹键盘。
+
+这条能成立还有个前提：第 260 轮把终端在 `connecting` 期间就摆进了树里，
+此时 `TerminalView` 已经挂上 `_terminalFocus`，`requestFocus()` 才有效。
+
+### 第 3 条上半：旋转（**只查清了一半，尚未修好**）
+
+复现（模拟器 API 36，`adb shell settings put system user_rotation 1`）：
+
+* 横屏时几何日志是 `widget=865x293 ... rows=45` —— 视口高 293dp 却仍按 45 行，
+  日志里的 `cellH=~6.52` 是"293/45"这个假值，说明这一行是在布局**之前**打的，
+  日志本身不能证明 resize 有没有发生；
+* 真正的问题是**像素**：`after_c_landscape.png`（2400x1080）按终端画布色
+  `(37,78,89)` 做墨迹带检测，**bands=0** —— 横屏那块画布上一个字都没有；
+* 旋转回竖屏后内容整体上移：首行墨迹 `after_d_portrait_again.png` = **128**
+  （正常应为 135，原版 137），也就是被状态栏切掉约 7px。
+
+针对第二点做的改动（本轮已进包）：给 `TerminalView` 传入自己的
+`scrollController`，在视口尺寸变化后的 post-frame 里，若用户本来贴在底部就
+`jumpTo(maxScrollExtent)`，丢掉 xterm `_stickToBottom` 残留的分数偏移。
+**实测没消掉这个 7px**（改前后 `after_d`/`before_d` 的墨迹带完全相同：
+`(47,82) (128,136) (151,186)`）—— 所以这条只算"加了兜底"，**不算修好**。
+横屏整屏无文字说明 xterm 在这种尺寸突变下的 `RenderTerminal` 绘制仍有问题，
+下一轮要从 `performLayout` 的实际 `size` 与 `_viewportSize` 入手接着查
+（日志要打在布局**之后**）。
+
+### 第 3 条下半：htop 里竖向滑动 —— 已修（依据 xterm 明确语义）
+
+xterm 4.0.0 `terminal_view.dart:138-143` 写着：`simulateScroll` 为 true 时，
+**在备用屏**（vim / man / htop 这类）如果程序没声明自己能处理滚动，终端会把
+竖向滑动**翻译成上/下方向键**发给程序，"这是多数终端模拟器的标准行为"，
+而且**默认就是 true**。htop 收到方向键当然会动 —— 这就是用户看到的
+"进入交互命令时比如 htop 仍然可以上下滑动"。原版不做这个翻译，所以显式传
+`simulateScroll: false`：备用屏里的竖向滑动不再产生任何输入。主屏（普通 shell）
+的历史滚动是 `Scrollable` 自己的事，不受这个开关影响。
+
+（如实标注：这条是**按 xterm 的接口语义**改的，本轮没做设备级的方向键字节验证
+—— 需要测试服能进备用屏，`tools/_sshd.py` 目前只回显。下一轮给它加一个
+`--alt-screen` 开关，用 sshd 日志里的 `收到 N 字节: b'\x1b[A'` 做真值。）
+
+### 第 1 条：状态栏观感 —— 模拟器上复现不出来，已把无效改动撤回
+
+先把现有事实量清楚（`before_*` 是改动前的包、`after_*` 是改动后）：
+
+| 采样点 | 原版 `o_term.png` | 本复刻（改前/改后） |
+| --- | --- | --- |
+| 状态栏那一条 y=40 | `(7,54,66)` = `#073642` | `(7,54,66)` 完全相同 |
+| 终端画布 y=300 | `(37,78,89)` = `#254E59` | `(37,78,89)` 完全相同 |
+| 颜色切换位置 | y=130 | y=130 |
+| 长按菜单打开时 y=40 | — | 仍是 `(7,54,66)`，**没有被 barrier 压暗** |
+
+也就是说：模拟器上状态栏那一条本来就与原版逐像素相同，整页覆盖层（长按菜单的
+barrier）也没有把它压暗 —— **"上了一层遮罩"在 API 36 上复现不出来**。
+
+按"状态栏那一层可能是 App 自己画的（于是会被覆盖层压暗）"这个假设，本轮试过
+`SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: ...)`
+把窗口交回系统绘制，结果**实测无效**：`outerTop`（Scaffold 之外读到的
+`MediaQuery.padding.top`）竖屏仍是 48.8、横屏仍是 24.0，横屏几何日志里
+`padTop=80.0` 也原样不变 —— Flutter 3.47.7 在这种配置下并没有把
+`decorFitsSystemWindows` 改回 true。既然无效，就把这处改动**撤回**了，
+不留没有实测支撑的"修法"。
+
+需要用户配合才能继续定位：**一张状态栏异常时的截图**（含机型 / Android 版本）。
+猜得出来但没验证的方向有两个：一是用户设备的系统状态栏是**半透明**的
+（此时 App 画在它下面的内容会透出来，观感就像蒙了一层），二是用户用的是
+**非默认终端配色**（状态栏底色取的是终端配色的 ANSI 0，与画布的
+"背景色 + 12% 白"本来就不同色 —— 原版同样如此，见上表）。
+
+### 交付物
+
+四份 APK（`--split-per-abi` 三套 ABI + fat），SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `0B048858D4B9A2FD7E6C3E37D972D4C98885739C5C89514BE74E3E06E5A0854F`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `4B9A65DFE750D4F1C06EA329D1C393F6FDE66D58D2F34A82EF9C2BB6808A81AC`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `439E28EB83CB688344561BC89A5979FF48F8FA3D2FB49F3ACAF24C2F4628FD93`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `94CC8ADEE128EC7BAE803462CB90566028888852EBA1E4051650512FA85015D2`。
