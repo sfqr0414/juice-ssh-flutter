@@ -1046,7 +1046,22 @@ class _TerminalPageState extends State<TerminalPage> {
   Widget _buildBody() {
     switch (_controller.state) {
       case TerminalSessionState.connecting:
-        return _ConnectingView(message: _controller.progress);
+        // 连接期间**也要把终端摆进树里**：让它赶在服务端第一个字节到达之前
+        // 完成一次布局、拿到真实行列数。否则横幅会以 xterm 默认的 80×24
+        // 写进缓冲区，等控件真正布局时再 resize + reflow，缓冲区会比可视区
+        // 多出一行，粘底显示又把第一行顶到状态栏之外 —— 这正是用户实测的
+        // "连接成功终端显示内容不完全，被状态栏遮挡；点一次键位条
+        // （触发一次布局变化）后内容显示恢复正常"。
+        // 连接画面是整块不透明径向渐变（`_ConnectingView`），终端在其后看不见，
+        // 观感与改动前完全一致。
+        return Stack(
+          children: [
+            Positioned.fill(child: _buildTerminal()),
+            Positioned.fill(
+              child: _ConnectingView(message: _controller.progress),
+            ),
+          ],
+        );
       case TerminalSessionState.failed:
         return _FailureView(
           failure: _controller.failure,
