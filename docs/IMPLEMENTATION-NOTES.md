@@ -8990,3 +8990,76 @@ versionCode 用的是经典的 ABI 递增方案（200 / 1200 / 2200 / 4200），
 
 * control 组横屏几何：`JuiceSshGeom3(resize): cols=105 rows=17 lines=17 cursorY=8 trimmed=0 viewport=293.4 max=0.0 pixels=0.0 text=JUICE TERMINAL SAMPLE/red green yellow blue `
 * treat 组横屏几何：`JuiceSshGeom3(resize): cols=105 rows=17 lines=17 cursorY=8 trimmed=0 viewport=293.4 max=0.0 pixels=0.0 text=JUICE TERMINAL SAMPLE/red green yellow blue `
+## 第 279-282 轮：从"无法验证"到抓到真实缺陷（交互式识别链路）
+
+这四轮的主线是把第 275 轮那处"识别交互式程序 → 禁掉手指拖动"从**无法验证**
+推到**触发链验证通过**，过程中抓到一个真实缺陷。
+
+### 第 279 轮记录更正：那次 A/B 是**无效实验**
+
+第 279 轮记了"两组都是 `max=0.0`、拖动位移 +0"。当时我把它当成"测量失败"，
+准确说法是**实验本身无效**：那轮我先"收起键位条让终端变大"，结果横屏视口有 17 行、
+而游标只停在第 8 行，`_cursorY(8) <= newHeight-1(16)`，xterm 的缩容分支正常
+`pop()` 了，于是 `lines == rows`、根本没有滚动余量 —— 没有余量就谈不上"能不能拖"，
+位移为 0 是必然的。更正为：**该次数据无效**。
+
+### 第 280 轮：先补可观测性
+
+第 275 轮那条链路此前完全不可观测（标志翻转没有任何痕迹），等于在黑盒上做实验。
+于是在入站扫描处加了一行日志：
+
+`JuiceSshInteractive: on=… off=… value=…`
+
+`analyze` 通过，提交 `dd0b253`。
+
+### 第 281 轮：**抓到真实缺陷** —— 私有模式跨数据块送达，扫描永远不命中
+
+补齐可观测性后立刻复现了问题：注入 `ESC[?1000h` 之后**一行日志都没有**。
+排查过程与证据：
+
+* 服务端日志确认序列确实发出去了（末尾三字节 `b'0' hex=30`、`b'0' hex=30`、
+  `b'h' hex=68`）；
+* 但应用侧毫无反应 —— 原因是**逐字节送达**：`\x1b`、`[`、`?`、`1`、`0`、`0`、`0`、`h`
+  落在**不同的事件**里，而第 275 轮的扫描只看单个数据块，
+  `data.contains('\x1b[?')` **永远为假**；
+* 结论：第 275 轮那条"识别交互式程序 → 禁手指拖动"的链路，对**分块送达**的序列
+  **完全失效**（htop 通常一次写入整串，才侥幸能命中，所以此前没暴露）。
+
+修法：在会话控制器里保留 24 字符的**滚动尾巴**，扫描"尾巴 + 本块"：
+
+```dart
+final window = _interactiveTail + data;
+if (window.contains('\x1b[?')) { /* 匹配 window 而不是 data */ }
+_interactiveTail = window.length > 24 ? window.substring(window.length - 24) : window;
+```
+
+设备实测（重建安装后注入分块送达的 `ESC[?1000h`）：
+
+```
+JuiceSshInteractive: on=true off=false value=true
+```
+
+修之前是**无输出**。触发链至此验证通过。提交 `ff03d09`。
+
+### 仍未解决 / 未验证的
+
+1. **退出序列的锐边**：注入 `ESC[?1000l` 时日志为 `on=true off=true value=true` ——
+   24 字符窗口里还留着上一个 `h`，`enters` 仍为真，于是我的条件 `leaves && !enters`
+   放过了这次复位。真实程序发退出序列时那个 `h` 早已滑出窗口，实践中能复位，
+   但应改成"以窗口内**最后一个**匹配为准"；
+2. **行为层 A/B 仍无干净信号**：像素差异判据两次都失败（第一次 2.27% vs 2.27%，
+   说明两组没有区别或差异另有来源）。现在触发链已验证，这个实验才有意义，
+   下一步是补 `JuiceSshScroll`（拖动结束时打印 `pixels`/`maxScrollExtent`）再跑；
+3. 第 280/281 轮此前**没有重新出包**，`dist/` 停留在第 275 轮；本轮已重出（见下）。
+
+### 交付物（本轮重出）
+
+四份 APK，SHA-256：
+- `dist/juice-ssh-flutter-3.2.2.apk`（73068531 字节），SHA-256：
+  `436532934FFC0E86BADCAF2E9C279C9B650F0A1746345006936CF386B3790682`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `3E21D4669C325640ABE896D3CD51227AABD64431399C16663335CC966BA00E73`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28654962 字节），SHA-256：
+  `776816E1046DA71CD265E6B866856319712446C1F111A3408B13644C9D0E7225`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `D6F028D4C735A1C82E54CF827E9AB190EBAA1E391C1327F78E93E9346956F938`。
