@@ -270,7 +270,15 @@ class JuiceFormTextField extends StatelessWidget {
                   disabledBorder: InputBorder.none,
                   errorBorder: InputBorder.none,
                   focusedErrorBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                  // 原版 EditText 的文字左起 **274px**：字段节点左边是 262
+                  // （`oed250.png` 的 uiautomator dump：`[262,665][1038,771]`），
+                  // 值与提示的墨迹都从 274 开始，即约 4dp 默认内边距 + 字形左留白。
+                  // 此前横向为 0，文字从 262+2 起，比原版偏左 10px
+                  // （`ed249.png` 实测 264/265）。纵向 6 保持不变。
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 6,
+                  ),
                 ),
               ),
             ),
