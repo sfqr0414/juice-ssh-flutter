@@ -532,8 +532,23 @@ class _TerminalPageState extends State<TerminalPage> {
   int _trimTrailingBlankLines(Terminal terminal) {
     final buffer = terminal.buffer;
     final viewHeight = terminal.viewHeight;
-    final extra = buffer.lines.length - viewHeight;
-    if (viewHeight <= 0 || extra <= 0) return 0;
+    if (viewHeight <= 0 || buffer.lines.length <= viewHeight) return 0;
+
+    // 备用屏（htop/vim 这类交互式程序在用的屏）：**必须正好一屏**，否则 xterm 内层
+    // `Scrollable` 的 `maxScrollExtent > 0`，用户就能上下拖。用户实测：
+    // "htop 不能滑动（很好），但一旋转到横屏又能滑了，返回竖屏还能滑"。
+    // 根因在 `Buffer.resize`（buffer.dart:437-477）的**缩容**分支：游标高于新高度时
+    // 它先 `_cursorY--` 而不是 `lines.pop()`，行数缩不到位 —— 而 `_cursorY` 的 clamp
+    // 发生在**之后**，救不回行数。备用屏里的多余行是上一尺寸的残留，直接全裁掉。
+    if (buffer.isAltBuffer) {
+      var popped = 0;
+      while (buffer.lines.length > viewHeight) {
+        buffer.lines.pop();
+        popped++;
+      }
+      return popped;
+    }
+
     var removable = 0;
     for (var y = buffer.lines.length - 1; y >= viewHeight; y--) {
       if (buffer.lines[y].getText().trim().isNotEmpty) break;

@@ -8604,3 +8604,61 @@ DA 自激循环是**两个独立缺陷**，都需要修。
   `EF41D017C3A1522A305FC279B8D7F47C5FD35131B88B8B3942DAA2F74941AC51`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `CEF2BC7DA75FFEB866572C9120D5296EBAEAF8DE62759C7FCB7C10A80928EFE5`。
+
+## 第 270 轮：交互式命令旋转后又能拖动 + 快速连接每次都要求输密码
+
+用户两轮实测反馈：
+
+> 1. 进入 htop 不能滑动（很好）。但一旋转到横屏又能滑动了，返回竖屏还能滑动 ——
+>    交互式命令只要在（备用屏）重绘就不允许能滑动。
+> 2. 快速连接输密码成功进入终端；下一次点"常用"进行快速连接仍然强制要求输入密码 ——
+>    预期是不再要求输入密码直接进终端。
+
+### 第 1 条：备用屏旋转后 `maxScrollExtent > 0` → 能拖动
+
+根因在 xterm `Buffer.resize`（`buffer.dart:437-477`）的**缩容**分支：
+`oldHeight > newHeight` 时，它先判断 `_cursorY > newHeight - 1` 就只 `_cursorY--`
+而**不 `lines.pop()`**，直到游标降到新高度以内才开始 pop；而 `_cursorY` 的 clamp
+发生在**之后**（line 461），救不回行数。于是"游标高于新高度 + 屏幕变矮"时
+`lines.length` 会大于 `viewHeight`（htop 正好把游标放在屏底），`_maxScrollExtent =
+总高 − 视口高 > 0`；再叠上第 261 轮把 `simulateScroll: false`（拖动交还给真正的
+Scrollable），旋转后 htop 就又能拖了 —— 与用户现象逐字吻合。
+
+修法：`_trimTrailingBlankLines()` 里加**备用屏分支** —— 备用屏必须正好一屏，
+`buffer.isAltBuffer` 时把多余行全部 `pop()`（备用屏的多余行是上一尺寸的残留，
+丢掉无副作用）。主屏（有回滚缓冲的普通 shell）不受影响，仍只裁末尾空行。
+
+设备实测（备用屏状态下，几何日志在**布局之后**打）：
+
+| 状态 | 结果 |
+| --- | --- |
+| 竖屏 | `cols=50 rows=26 lines=26 cursorY=23 max=0.0` |
+| 横屏 | `cols=105 rows=1..3 lines=1..3 max=0.0` |
+| 回到竖屏 | `cols=50 rows=25..27 lines=25..27 max=0.0` |
+
+`maxScrollExtent` 三种状态**全为 0.0**（= 拖不动 ✓），`lines == rows`，
+logcat 无 Flutter 异常。如实标注：这次运行里 `trimmed=0`（新分支没被触发，
+是 xterm 自己的 pop 就把行数缩对了），所以"新分支生效"这一点只有代码路径保证；
+最终以用户的 htop 旋转实测为准。
+
+### 第 2 条：进程内密码缓存
+
+`SshConnector` 增加静态 `_passwordCache`（键 `user@host`）：`onPasswordRequest`
+先查缓存，命中直接返回、不再弹窗；用户首次输入后写入缓存。**只留在内存**，
+不写 SQLite（避免明文落盘）；服务器改密码时重启应用会重新提示。
+如实标注：本条只做了代码级修改 + `analyze` 通过，**未做设备级验证**
+（模拟器上的测试服同时接受密钥与密码，密钥路径会先短路掉密码提示，
+要复现"每次都要求输密码"需要纯密码主机）——请用户手测确认。
+
+### 交付物
+
+四份 APK，SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `D0F2AA0B4A5D9DC7EA8BDB85ADE05A8A0B982BE36844AD2803CF85A55845DA33`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `CD2633E1CC7229D24B168EF048B9E19B80B09070229BE713ED24FC00C6D88595`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `A235208BDEE1C4958311CADA00B7228DE532A3565E69E980E7003309CB577459`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `E7162137A25341B0987965642DA91FA0D7A61D0211CB7345DF882EC520626243`。

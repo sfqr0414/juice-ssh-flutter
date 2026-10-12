@@ -189,6 +189,11 @@ class JuiceSshSession {
 /// （失败即把 password 方法标记为已穷尽），因此这里对每个候选身份
 /// 重新建连来复现该语义。
 class SshConnector {
+  /// 进程内的密码缓存（键 `user@host`）。第 270 轮用户实测："常用"快速连接第一次
+  /// 输了密码进了终端，下一次再连**仍然要求输密码**；预期是记住密码直接进终端。
+  /// 只留在内存里（不落 SQLite，避免明文写盘）；服务器改密码时重启应用会重新提示。
+  static final Map<String, String> _passwordCache = {};
+
   const SshConnector._();
 
   /// 客户端标识。原版由原生 libssh 发布，具体字符串静态读不到，
@@ -315,7 +320,17 @@ class SshConnector {
             passwordUsed = null;
             return value;
           }
-          return onPassword('请输入 $username@${connection.address} 的密码', false);
+          // 已经在这个进程里输过密码 → 直接复用，不再弹窗（用户要求：
+          // "下一次点'常用'快速连接不再要求输入密码，直接进终端"）。
+          final cacheKey = '$username@${connection.address}';
+          final cached = SshConnector._passwordCache[cacheKey];
+          if (cached != null) return cached;
+          final answer = await onPassword(
+              '请输入 $username@${connection.address} 的密码', false);
+          if (answer != null && answer.isNotEmpty) {
+            SshConnector._passwordCache[cacheKey] = answer;
+          }
+          return answer;
         },
         onUserInfoRequest: (request) async {
           // 键盘交互式认证，原版用它支持两步验证（Google Authenticator 等）。
