@@ -9767,3 +9767,72 @@ release {
 
 * 签名决策待用户答复；
 * 本轮无代码改动、无新交付物，`dist/` 未变。
+## 第 322-327 轮：正式发布签名（用户决策 → 两次失败 → 验证通过 → 重出四份包）
+
+### 起点：交付包是 debug 签名
+
+核验时发现 `android/app/build.gradle.kts` 的 release 构建类型复用了 debug 签名：
+`signingConfig = signingConfigs.getByName("debug")`。含义：能装、自用没问题，
+但**不能上架**、换机器构建后签名不同导致无法覆盖升级、且与别签名的同名包冲突。
+
+### 用户决策（第 323 轮结构化提问）
+
+* 签名：**现在就生成正式签名并重出四份包**（推荐项）；
+* 下一步优先：**补 `integration_test` 载体**（UI 端到端验证）。
+
+### 签名素材
+
+* keystore：`android/app/juice-release.jks`，别名 `juice`，
+  证书 SHA-256 指纹 `CF:4F:92:05:D3:D5:82:C7:FF:69:79:94:8A:80:49:7D:8F:69:83:E3:76:10:A1:C8:04:CE:81:06:09:42:99:44`；
+* `android/key.properties`：`storeFile=juice-release.jks`、`storePassword`/`keyPassword`
+  均为 `JuiceSSH-Flutter-2026!`、`keyAlias=juice`；
+* **两者都不进 git**，`.gitignore` 追加 `android/key.properties`、`*.jks`、`*.keystore`（后又补 `android/build/`）。
+  **必须另行备份这两个文件，丢失后无法再覆盖升级。**
+
+### 两次失败（都是我的方法错）
+
+1. 用 PowerShell 字符串替换往 Kotlin DSL 里插 `signingConfigs` →
+   `Unresolved reference 'util'`：Kotlin DSL 里 `java` 被解析成 Gradle 的 Java 扩展，
+   `java.util.Properties` 认不出。**正解：文件顶部 `import java.util.Properties`。**
+2. 加 import 后再试 → 第 72-76 行 `Unexpected symbol`：字符串改写把脚本结构弄坏了。
+   我当时还把坏版本提交了（`613fd8c`）→ 用 `757560f` **回退** `build.gradle.kts`，
+   并跑 `.\gradlew.bat :app:help` 烟测确认恢复可编译（BUILD SUCCESSFUL in 26s）。
+3. 最终正解：**`read` 全文后用 `write` 整体重写**（不再做字符串手术）——
+   顶部 `import java.util.Properties`；`plugins {}` **之后**声明顶层
+   `val juiceKeyProps` / `val juiceHasReleaseKey`（Kotlin DSL 要求 `plugins {}` 之前只能有
+   import/buildscript）；`android {}` 内加 `signingConfigs.create("release")`；
+   release 用单行条件 `signingConfig = if (juiceHasReleaseKey) ...release... else ...debug...`。
+   烟测 4s 通过，四个变体全部构建成功（v7a 27.3MB / arm64 29.5MB / x86_64 30.9MB / fat 69.7MB）。
+
+### 验证（决定性证据）
+
+* `.\gradlew.bat :app:signingReport`：Variant **release** → `Config: release`、
+  `Store: ...\android\app\juice-release.jks`、`Alias: juice`；debug/profile → `AndroidDebugKey`；
+* `apksigner verify --print-certs`：`CN=JuiceSSH Flutter Clone, O=Local, C=CN`，
+  证书 SHA-256 `cf4f9205...9944` ＝ 上面 keystore 指纹。
+
+### 交付物已重出（`dist/`，发布签名）
+
+| 文件 | versionCode | 大小 | SHA-256 |
+| --- | --- | --- | --- |
+| `-arm64-v8a.apk` | 2200 | 30,918,184 B | `AF89C5D162252E451F604035C20F7255E96FDAAE7678FCCBE2A02CED30B51767` |
+| `-armeabi-v7a.apk` | 1200 | 28,654,962 B | `419A20F0EC2F6C2F1896CDD2392007F8ED9F19E321BFB9963AB14499E715D278` |
+| `-x86_64.apk` | 4200 | 32,369,913 B | `9D37C22644106F24BD4CE4C8EFE329E483F183F1D45D0E0BB5C190B1DBA2A184` |
+| `juice-ssh-flutter-3.2.2.apk`（fat） | 200 | 73,068,531 B | `8D3E2498251B713A78082180DF777FAD528164D9CE39BDF71DA72A6E12F1D66A` |
+
+versionName 3.2.2 / minSdk 26 / targetSdk 29 未变。
+**换了签名键，所以手机上已装的旧包无法覆盖升级，必须先卸载再装。**
+
+### 四条教训
+
+1. 别用字符串替换去改 Kotlin DSL —— 读懂后整体重写；
+2. **别拿"大小相同"当"字节相同"**：我据此误判了两轮，而打印的哈希其实是 `dist/` 里的旧包；
+   要比就比同一批文件、比 SHA-256；
+3. `apksigner` 输出**以空行开头**，`Select-Object -First 1` 会取到空行 →
+   过滤/取值必须用精确锚点（如 `Signer #1 certificate DN:`）或跳过空行；
+4. "读不到密钥就回退 debug" 的兜底**会掩盖失败** —— 应在构建时打印实际使用的签名配置。
+
+### 待办
+
+* 补 `integration_test/` 载体（用户第二个选择）；
+* 四条真机复测与真机性能数据仍等用户。
