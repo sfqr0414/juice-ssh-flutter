@@ -1380,20 +1380,33 @@ class _TerminalPageState extends State<TerminalPage> {
                   removeLeft: true,
                   removeRight: true,
                   child: ListenableBuilder(
-                    // 仅在**当前真的处于备用屏**时剥夺终端原生触摸拖动：判据取 xterm 的
-                    // 实时状态 `terminal.isUsingAltBuffer`，而不是"有交互式程序在跑"这个
-                    // 会误判/滞留的启发式标志 —— 后者一旦为真，普通 shell 就彻底滑不动
-                    // （用户实测「tree -L 2 输出超屏后无法滚屏」）。
-                    // 重建由"备用屏标志 + 每次终端输出"共同驱动：前者在进出序列上翻转，
-                    // 后者（`outputTick`）保证 htop 这类持续重绘时配置不会过期 —— 否则
-                    // 会出现"进了交互程序仍然能滑"（用户实测）。只在终端这一层生效。
+                    // 判据照抄原版：**鼠标上报模式开着**（DECSET 1000/1002/1003）时，
+                    // 终端不滚回滚缓冲。
+                    //
+                    // 依据是原版 APK 的反汇编（jackpal `EmulatorView.onScroll` @3fa788）：
+                    //     if (isMouseTrackingActive()) {                        // TerminalEmulator.getMouseTrackingMode()
+                    //         if (remaining > 0) sendMouseEventCode(ev, 65);    // 滚轮上
+                    //         else if (remaining < 0) sendMouseEventCode(ev, 64);// 滚轮下
+                    //         return;                                          // ← 不回滚缓冲
+                    //     }
+                    //     mTopRow = clamp(..., getActiveTranscriptRows());      // 普通模式才滚
+                    // `onFling` @3fa494 同理：鼠标模式交给 `MouseTrackingFlingRunner`，
+                    // 否则才 `mScroller.fling(0, mTopRow, 0, vy, 0,0, 0, getActiveTranscriptRows())`
+                    // —— 原版"一滑滚很远"的惯性就来自这里。
+                    //
+                    // 对应的实时状态在 xterm 是 `Terminal.mouseMode`（terminal.dart:182），
+                    // 等价于原版的 `getMouseTrackingMode()`；备用屏一并算作交互态（那里
+                    // 没有回滚行，本就不该滚）。判据全用实时状态，不依赖任何启发式标志；
+                    // 重建由 `outputTick` 驱动，模式切换序列一写完就重算，配置不会过期。
                     listenable: Listenable.merge(<Listenable>[
                       _controller.interactiveProgram,
                       _controller.outputTick,
                     ]),
                     builder: (context, child) => ScrollConfiguration(
                       behavior: ScrollConfiguration.of(context).copyWith(
-                        dragDevices: _controller.terminal.isUsingAltBuffer
+                        dragDevices: (_controller.terminal.mouseMode !=
+                                    MouseMode.none ||
+                                _controller.terminal.isUsingAltBuffer)
                             ? const {}
                             : null,
                       ),
