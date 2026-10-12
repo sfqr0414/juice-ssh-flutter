@@ -9996,3 +9996,56 @@ Flutter 只要捕获到框架异常就判定测试失败 —— 这就解释了�
 这是本项目**第一个由自建测试载体抓出来的真实缺陷**：此前几十轮 adb 坐标点击完全看不到
 框架异常（坐标法只能看到画面，看不到断言）。第 311 轮"停坐标法、改走 `integration_test`"
 的判断至此有了实证回报。
+
+---
+
+## 第 345+ 轮：普通模式滑屏滚动回归（用户报告"不能滑屏滚动了"）
+
+### 真因（真 bug，一行正则）
+
+交互式全屏判定把**鼠标上报模式**（`\x1b[?1000h` / `1002` / `1003`）也算成了"全屏程序"。
+普通 shell 登录后 readline 之类**会自行开启这些模式**，于是：
+
+```
+interactiveProgram = true → ScrollConfiguration(dragDevices: {}) → 手指滑动被禁
+```
+
+表现为"普通模式下滑不动，但 htop/vim 里的禁滑语义看起来是对的"。修复：只认备用屏切换
+`\x1b[?1049h` / `\x1b[?47h`（逐字节验证过 `l` 侧的关闭序列）。
+
+### 配套改动
+
+- **主屏裸指针滚动驱动**：`_onTerminalPointerMove` 里按 `event.delta.dy` 驱动
+  `_terminalScroll.jumpTo`（带 `hasContentDimensions` / `min<max` 守卫），备用屏不参与。
+  注意：该函数开头曾有一个 `if (_longPressOrigin == null) return;`，长按因超位移阈值被取消后
+  整段被跳过，驱动只在前一两帧生效 —— 改成空值守卫后才每次移动都执行。
+- **布局期断言**：`_buildTerminal` 的 `LayoutBuilder` 内调用 `box.localToGlobal`，而祖先里的
+  路由转场（`RenderFractionalTranslation`）尚未布局 → `hasSize` 断言并打断 layout callback。
+  修法：先判 `box.hasSize`（布局自上而下，祖先未布局则自身必无尺寸）。集成测试里该框架异常
+  随之消失。
+- `simulateScroll: false` 恢复；`Listener` 回调保持直接方法引用（诊断用的内联探针已移除）。
+
+### 方法教训（本轮最重要的产出，比修复本身更值钱）
+
+这段排查里我连续被自己的量具骗了二十多轮，教训必须写下来：
+
+1. **`debugPrint` 会节流丢消息** —— 探针"沉默"被我误读成"事件没到达"。凡是要当作证据的
+   日志，用 `print`（或写文件），不要用 `debugPrint`。
+2. **集成测试里的拖动/探针不可作为触摸滚动的判据** —— 即使 `find.ancestor(byKey)` 证明
+   `Listener` 是可见 `TerminalView` 的**元素树**祖先，内联 `print` 探针与 `adb` 真实触摸
+   都没有产生 `onPointerDown`；元素树祖先 ≠ 渲染树命中路径（中间可能夹着
+   `Offstage`/`_Theater`/`IgnorePointer`）。别再用"祖先关系"推断命中。
+3. **判据要能识破"贴底跟随"** —— 键盘/布局变化会抬高 `maxScrollExtent`，`pixels` 跟着涨，
+   用 `|after-before|>1` 会得到假绿。要用**离底距离** `maxScrollExtent - pixels`。
+4. **最终可信的判定是像素比对 + 静止自校验**：先截 A，等 2 秒再截 A₂，`A≈A₂` 才说明画面
+   静止、对时正确；再"截 A → 真实滑动 → 截 B"。本轮结果：自检 `mean=0.000 / 变化 0.000%`，
+   滑动后终端区 `mean=12.474 / 变化 20.327%`（文本整行位移特征）→ **普通模式滑动可用**。
+
+### 交付
+
+- `dist/` 拆分为 `dist/release/`（arm64-v8a / armeabi-v7a / x86_64 / 通用，4 个发布签名包）
+  与 `dist/debug/`（1 个 debug 包）；大小、`sha256`、签名者、`versionName`/`versionCode` 均核验，
+  四个 release 包哈希与旧包全部不同（确认包含本轮修复）。
+- 备用屏禁滑语义**未被削弱**：判定条件只从"含鼠标模式"收窄为"仅备用屏切换"，
+  驱动与 `dragDevices` 仍挂在同一个 `interactiveProgram` 标志上。
+
