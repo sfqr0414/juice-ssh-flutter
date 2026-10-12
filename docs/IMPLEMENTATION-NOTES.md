@@ -9188,3 +9188,47 @@ final leaving = offAt > onAt;   // 最后出现的是退出序列
 代码片段 / 主题这两个模块目前只有"屏幕存在"级别的证据，没有交互级证据。
 
 （本轮无代码改动、无新交付物；`dist/` 仍是第 285 轮四份。）
+## 第 282-283 轮：页签条实测映射（交互级取证）与设备健康结论
+
+### 第 282 轮：一次"挂住"的排查
+
+我用"横向边界扫描"（在 `y=317` 依次点若干 x 坐标，看浮动按钮文案判断当前页）替代
+第 286 轮被证伪的"三等分"假设。第一次执行 **10 分钟一行输出都没有**：
+
+* 排查结论：**不是设备坏了** —— `adb devices` 正常、`adb shell echo ok` 秒回、
+  包在（`versionCode=4200`）、`ps` 里**没有残留的 `uiautomator` 进程**、
+  emulator/qemu 进程都在；
+* 真正的现象是"输出被缓冲到命令结束才回传"，所以卡在早期步骤时看不到任何中间证据。
+  因此第二次重跑时给每个 dump 加了 25 秒超时保护（`Start-Job` + `Wait-Job -Timeout`），
+  超时就标记 `DUMP_TIMEOUT` 继续，避免整条命令被一步拖死。
+
+### 第 283 轮：页签条边界实测（**交互级取证**）
+
+在主页（点 `Manage Connections`）后扫描 `y=317`：
+
+| 点击 x | 落到页签 | 浮动按钮 | 首条内容 |
+| --- | --- | --- | --- |
+| 60 | **Port Forwards** | `New Port Forward` | `web` / `Invalid Connection` |
+| 300 | **Port Forwards** | `New Port Forward` | 同上 |
+| 700 | **Connections** | `New Connection` | `lab-group` / `Not shared` |
+| 1020 | **Identities** | `New Identity` | `juiceww` / `Used by 1 connection` |
+
+由此确定（**可以复用的结论**）：
+
+1. 页签条从左到右是 **Port Forwards | Connections | Identities** ——
+   既不是"Connections 在最左"，也不是三等分；第 286 轮那条"三等分"反例的
+   真正解释就是这里：左三分之一是 Port Forwards；
+2. 每页各自有对应的浮动按钮（`New Port Forward` / `New Connection` / `New Identity`），
+   可作为"当前在哪一页"的判据；
+3. `Identities` 页有真实数据：身份 `juiceww`，且标注 `Used by 1 connection` ——
+   **引用计数也是对的**。
+
+这一步把连接管理 / 端口转发 / 身份三个模块从"屏幕存在"级提到了**交互级**证据。
+
+### 仍未取证 / 待办
+
+* `Manage Snippets`（设置 → 代码片段）与 `Dark Theme`（主题切换）两个嵌套入口仍未走到：
+  实测证明"猜坐标进设置页"不可靠，需要先精确定位 `More options`（`x≈1032 y≈201`）
+  菜单项坐标；
+* 端口转发的**创建-运行**链路（目前只有屏幕与列表级证据）；
+* 记录约定：本轮无代码改动、无新交付物，`dist/` 仍是第 285 轮四份。
