@@ -8565,3 +8565,42 @@ DA 自激循环是**两个独立缺陷**，都需要修。
 等价手段：让 `TerminalView` 收到一次尺寸/控制器变更，或在会话 `connected` 且布局稳定后
 `setState` + 让 xterm 的缓冲变更通知落到 `markNeedsPaint`），并用同一套探针复测
 `m_alt.png` 的墨迹带数（目标是稳定出现 3 行文字 + 1 行状态行）。
+
+## 第 269 轮：连上后"键盘弹着却打不进字" —— 用户实测定位到焦点时序
+
+用户这轮给了决定性的现象描述，直接指出根因：
+
+> 可以vi命令输入打字正常了。（第 264 轮 DA 自激循环的修复**已被用户实测确认**）
+> 终端连接成功进去，输入键盘首屏自然弹出，然后打什么也不出现；
+> **当我点击完屏幕重新触发焦点就能输入打字了**。
+
+即：自动弹出输入法（第 261 轮加的行为）与"`TerminalView` 的文本输入客户端真正挂上"
+之间存在时序差 —— 键盘显示着（`dumpsys input_method` 里 `mInputShown=true`），
+但当前没有有效的输入连接，于是打字不产生任何字节；用户点一下屏幕重新触发焦点后一切正常。
+这也**推翻了我第 265 轮的判断**：当时我把 `adb shell input text` 注入零字节记成"测试手段
+限制"，实际那就是真实缺陷的一个表现面（已在该轮记录里更正）。
+
+修法（`terminal_page.dart` 的 `_showSoftKeyboard()`）：
+
+1. 先 `unfocus()` → 等 60ms → `requestFocus()`（强制走一次文本输入客户端 attach），
+   再等 120ms 后 `TextInput.show` —— 因为 `TerminalView` 在连接期刚重建过，焦点节点
+   可能仍是"已聚焦"状态，引擎就不会重新 attach；
+2. 弹出之后再延迟 600ms **补一次** `requestFocus()` + `TextInput.show`，
+   等价于用户那一下点击，用户不必再点。
+
+如实标注：这条通道**无法用 adb 验证**（`input text`/字母键事件在输入法弹出时会被输入法
+消费，到不了应用），设备侧只能确认 `mInputShown=true` 且存在 `mServedInputConnection`;
+"打字真的进去了"必须由用户手打复测。
+
+### 交付物
+
+四份 APK，SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `E5F6EE77ECA467FC9F91F077D6FCC5A504F76A8642EA75C7B71379BC37A2DC40`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `DA6A619915CDCB5D329EB118549603CF19E954790AA4CCB2924FC9D0D57E2432`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `EF41D017C3A1522A305FC279B8D7F47C5FD35131B88B8B3942DAA2F74941AC51`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `CEF2BC7DA75FFEB866572C9120D5296EBAEAF8DE62759C7FCB7C10A80928EFE5`。

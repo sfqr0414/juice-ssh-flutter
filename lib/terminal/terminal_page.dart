@@ -300,6 +300,12 @@ class _TerminalPageState extends State<TerminalPage> {
     if (previous == TerminalSessionState.connecting &&
         state == TerminalSessionState.connected) {
       unawaited(_showSoftKeyboard());
+      // 连上之后**再补一次重绘**：远端常在 shell 刚起来时立刻切备用屏（vi/vim/htop），
+      // 那段内容可能落在布局/尺寸变化的窗口里丢掉重绘（第 268 轮实测备用屏整片空白）。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _clampTerminalScroll();
+      });
     }
     if (mounted) setState(() {});
   }
@@ -557,9 +563,11 @@ class _TerminalPageState extends State<TerminalPage> {
       target = (target - extraShift * cellHeight)
           .clamp(0.0, position.maxScrollExtent);
     }
-    if (position.pixels != target) {
-      position.jumpTo(target);
-    }
+    // 无条件 `jumpTo`：值相同也会走 `forcePixels` → 位置通知 → xterm 的
+    // `_TerminalView` 重绘。备用屏（vi/vim/htop）内容到达时正好撞在"连接/resize
+    // 尚未稳定"的窗口里，第 268 轮实测画面会**整片空白**（同内容多写一段就又画出来
+    // 了），根因就是这一帧丢了重绘；这里借尺寸变化后的这次调用把它补上。
+    position.jumpTo(target);
     _terminalStuckToBottom = true;
   }
 
@@ -568,6 +576,22 @@ class _TerminalPageState extends State<TerminalPage> {
     _terminalFocus.requestFocus();
     // 等一小段时间让焦点真正落到输入框上再要求显示：紧接着 requestFocus()
     // 调用 `TextInput.show` 在部分机型上会被忽略（点了不弹）。
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    // 用户实测："终端里用 Android 键盘打什么都输入不了"（键盘弹着但文本进不去）。
+    // 只 `requestFocus()` 不够：`TerminalView` 在连接期刚重建过，焦点节点可能仍是
+    // "已聚焦"状态，于是引擎不会重新 attach 文本输入客户端 —— 键盘显示着、打字没反应。
+    // 所以先 `unfocus()` 再 `requestFocus()`，强制走一次 attach，然后才要求显示输入法。
+    _terminalFocus.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    _terminalFocus.requestFocus();
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+    // 用户实测：连上后键盘自动弹出，但这时**打字没反应**，点一下屏幕（重新触发焦点）
+    // 就能打字了 —— 说明"弹出输入法"与"文本输入客户端真正挂上"之间存在时序差。
+    // 这里在弹出之后再补一次 focus + show，等价于用户那一下点击，用户就不必再点。
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    _terminalFocus.requestFocus();
     await Future<void>.delayed(const Duration(milliseconds: 80));
     await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   }
