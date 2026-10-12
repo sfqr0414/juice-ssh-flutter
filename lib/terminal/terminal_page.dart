@@ -110,6 +110,20 @@ class _TerminalPageState extends State<TerminalPage> {
   /// `Toggle Keyboard` 键维护的软键盘显隐状态（理由见 `_toggleSoftKeyboard`）。
   bool _softKeyboardVisible = false;
 
+  /// 上一次看到的会话状态，用来识别"刚连上"这个瞬间（原版连上就自动弹输入法）。
+  TerminalSessionState? _lastSessionState;
+
+  /// 终端内层 `Scrollable` 的控制器（传给 `TerminalView.scrollController`）。
+  /// 用来在**视口尺寸变化**后把位置重新贴底：xterm 的 `_stickToBottom` 只用
+  /// `correctBy(_maxScrollExtent - _scrollOffset)` 修正，实测会残留几个像素的
+  /// 分数偏移 —— 旋转屏幕后首行墨迹从 135 掉到 128（= 内容整体上移、被状态栏切掉），
+  /// 用户报的"终端屏幕旋转内容显示不正常"就有这一份。直接 `jumpTo(maxScrollExtent)`
+  /// 才能对齐。
+  final ScrollController _terminalScroll = ScrollController();
+
+  /// 用户当前是否贴在底部（没在翻历史）。只有贴底时才在尺寸变化后重新贴底。
+  bool _terminalStuckToBottom = true;
+
   /// 弹窗键盘（原版 `hacker_keyboard.xml` 那两行键位）是否可见。
   ///
   /// 原版语义有内置教程为证：中文「点击终端以显示弹出键盘，该键盘拥有常用的特殊按键
@@ -198,6 +212,13 @@ class _TerminalPageState extends State<TerminalPage> {
       );
     };
     _controller.addListener(_onSessionChanged);
+    // 记录用户是否贴在底部：只有贴底时才在视口尺寸变化后重新贴底，
+    // 用户在翻历史时不要被打断。
+    _terminalScroll.addListener(() {
+      if (!_terminalScroll.hasClients) return;
+      final position = _terminalScroll.position;
+      _terminalStuckToBottom = position.pixels >= position.maxScrollExtent - 1;
+    });
     // 原版音量键改字号（`dispatchKeyEvent` keycode 24/25）需要原生侧拦截，
     // 只在终端页声明「当前在前台」时才拦截。重新附着到已有会话时也要声明，
     // 所以放在这里而不是下面的 `acquired.created` 分支里。
@@ -265,6 +286,17 @@ class _TerminalPageState extends State<TerminalPage> {
   void _onSessionChanged() {
     // 会话中也能改终端配色（长按菜单），状态栏要跟着走。
     _syncStatusBar();
+    // 原版连上终端就自动把输入法顶出来（用户实测："连接成功进终端页面会自动弹出
+    // 输入键盘，表示用户可以输入命令了"）。只在 `connecting → connected` 这个
+    // 跃迁上做：从通知栏回到一个**已经在跑**的会话（首次通知时状态就是 connected）
+    // 不该平白弹出键盘。
+    final state = _controller.state;
+    final previous = _lastSessionState;
+    _lastSessionState = state;
+    if (previous == TerminalSessionState.connecting &&
+        state == TerminalSessionState.connected) {
+      unawaited(_showSoftKeyboard());
+    }
     if (mounted) setState(() {});
   }
 
@@ -282,6 +314,7 @@ class _TerminalPageState extends State<TerminalPage> {
     HardwareKeys.setVolumeKeysActive(false);
     _terminalController.dispose();
     _terminalFocus.dispose();
+    _terminalScroll.dispose();
     // 状态栏交还给应用配色：终端自己的底色只属于这个页面。
     final restore = _appStatusBarColor;
     if (restore != null) {
@@ -445,13 +478,32 @@ class _TerminalPageState extends State<TerminalPage> {
       _terminalFocus.unfocus();
       await SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     } else {
-      _softKeyboardVisible = true;
-      _terminalFocus.requestFocus();
-      // 等一小段时间让焦点真正落到输入框上再要求显示：紧接着 requestFocus()
-      // 调用 `TextInput.show` 在部分机型上会被忽略（点了不弹）。
-      await Future<void>.delayed(const Duration(milliseconds: 80));
-      await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+      await _showSoftKeyboard();
     }
+  }
+
+  /// 视口尺寸变化后把滚动位置重新贴底（丢掉 xterm 残留的分数偏移）。
+  ///
+  /// 只在用户本来就贴在底部时做：正在翻历史的人不该被拽回来。旋转屏幕、
+  /// 软键盘起落、键位条切换都会走到这里 —— 用户报的"终端屏幕旋转内容显示不正常"
+  /// 就是旋转后残留了几个像素的偏移（实测首行墨迹 135 → 128，被状态栏切掉）。
+  void _clampTerminalScroll() {
+    if (!mounted || !_terminalScroll.hasClients) return;
+    if (!_terminalStuckToBottom) return;
+    final position = _terminalScroll.position;
+    if (position.pixels != position.maxScrollExtent) {
+      position.jumpTo(position.maxScrollExtent);
+    }
+    _terminalStuckToBottom = true;
+  }
+
+  /// 把输入法顶出来（`_toggleSoftKeyboard` 的显示分支；连上终端时也用它）。
+  Future<void> _showSoftKeyboard() async {    _softKeyboardVisible = true;
+    _terminalFocus.requestFocus();
+    // 等一小段时间让焦点真正落到输入框上再要求显示：紧接着 requestFocus()
+    // 调用 `TextInput.show` 在部分机型上会被忽略（点了不弹）。
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   }
 
   void _onKeyTag(int tag) {
@@ -1086,6 +1138,18 @@ class _TerminalPageState extends State<TerminalPage> {
         Positioned.fill(
           child: LayoutBuilder(
             builder: (context, constraints) {
+              // 视口尺寸变化（旋转屏幕、键位条切换、软键盘起落）后重新贴底。
+              // 这里只登记"变了"，真正的修正放到布局结束之后（post-frame），
+              // 那时 xterm 才算完新的行列数。
+              final size = Size(constraints.maxWidth, constraints.maxHeight);
+              if (_terminalLayoutSize != size) {
+                if (_terminalLayoutSize != null) {
+                  WidgetsBinding.instance.addPostFrameCallback(
+                    (_) => _clampTerminalScroll(),
+                  );
+                }
+                _terminalLayoutSize = size;
+              }
               // 一次性几何诊断：用来定位"终端内容不从顶端开始"（用户报的第 1 条）。
               // 画布确实从 y=128 起（与原版一致），但第一行内容落在 y=241/274，
               // 而且即使发过 `ESC c ESC[2J ESC[3J ESC[H` 把光标归位到 (0,0) 之后，
@@ -1093,8 +1157,6 @@ class _TerminalPageState extends State<TerminalPage> {
               // 与控件高度对账才能判定是"缓冲区多了空行"还是"绘制原点被推低"。
               // 几何诊断：数值变化时打一行（首次构建时终端还是 xterm 的默认
               // 80×24，resize 发生在布局之后，所以要连着两次都看到才完整）。
-              _terminalLayoutSize =
-                  Size(constraints.maxWidth, constraints.maxHeight);
               if (constraints.maxHeight > 0) {
                 final terminal = _controller.terminal;
                 if (terminal.viewHeight > 0) {
@@ -1154,12 +1216,21 @@ class _TerminalPageState extends State<TerminalPage> {
                   child: TerminalView(
                     _controller.terminal,
                     controller: _terminalController,
+                    scrollController: _terminalScroll,
                     theme: _controller.surfaceTheme,
                     textStyle: _controller.textStyle,
                     focusNode: _terminalFocus,
                     padding: EdgeInsets.all(margin.toDouble()),
                     deleteDetection: true,
                     keyboardType: TextInputType.text,
+                    // 原版在备用屏（htop / vim / man 这类交互命令）里**不**把竖向滑动
+                    // 翻译成方向键：用户实测"进入交互命令时比如 htop 仍然可以上下滑动，
+                    // 和原版不一致"。xterm 4.0.0 的 `simulateScroll` 默认 true
+                    // （`terminal_view.dart:138-143`："when the terminal is in alternate
+                    // buffer ... the terminal will simulate scrolling by sending up/down
+                    // arrow keys"），所以这里显式关掉：备用屏里竖向滑动不再产生任何输入。
+                    // 主屏（普通 shell）的历史滚动不受影响，那是 `Scrollable` 自己的事。
+                    simulateScroll: false,
                   ),
                 ),
               );
