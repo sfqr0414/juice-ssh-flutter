@@ -8068,3 +8068,95 @@ padding: MediaQuery.of(context).padding,
   `1E16421F08313F671375D0CEAD13C131A8AA7E07CB574375BF725D378DC2ADF9`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `093CD5046E0E2FFBD5EC1DE7A0BC90EDFD08870E40CFEFE3E88D3D4EF41FB714`。
+
+## 第 260 轮：用户新报 —— 连上后终端内容被状态栏切掉一截，点一下键位条才恢复正常
+
+用户原话：`连接成功终端显示内容不完全，内容未正好贴到原版窗口在状态栏之下控件顶端，
+被状态栏遮挡。点击切换了一下黑客键盘，内容可视区变化。内容显示恢复正常`
+
+这条是第 259 轮那两层修复（去掉 xterm 的 MediaQuery padding、补真实状态栏高度）之后
+才暴露出来的**第三个独立原因**：布局时机，不是位置。
+
+### 根因：服务端横幅是在 xterm 默认的 80×24 下写进缓冲区的
+
+`_buildBody()` 原来在 `connecting` 状态**只渲染连接画面**：
+
+```dart
+case TerminalSessionState.connecting:
+  return _ConnectingView(message: _controller.progress);
+```
+
+也就是说 `TerminalView` 在连接期间**根本不在 widget 树里**，它要等状态变成 `connected`
+才第一次布局。而 SSH 通道一开，服务端的横幅立刻到达 —— 于是：
+
+1. 横幅以 xterm 默认的 **80×24** 解析（80 列下字母表那一行不折行，光标落在第 6 行）；
+2. 通道建立完、状态翻转，`TerminalView` 才第一次布局，终端被 resize 成 **50×45**；
+3. `Buffer.resize` 先把缓冲补到 45 行，紧接着 `reflow()` 把 80 列重排成 50 列 ——
+   字母表那行（52 字符）折成两行，于是缓冲区变成 **46 行 = 可视区 45 行 + 1**；
+4. xterm 是"粘底"的（`_stickToBottom` → `_offset.correctBy(_maxScrollExtent - _scrollOffset)`），
+   多出来的那一行把**第 0 行（`JUICE TERMINAL SAMPLE`）顶到了可视区之外**，
+   而可视区顶端又正好在状态栏底边 —— 用户看到的就是"内容不完全、被状态栏遮挡"。
+
+点一下键位条会切换 `_popupKeyboardVisible` → 触发一次布局变化 → 终端再次 resize，
+这一次内容已经是最终宽度、不需要重排（只是补/删尾部空行），粘底偏移重新落回
+`maxScrollExtent = 0`，于是显示恢复正常。这与用户"点一下就恢复"的描述完全一致。
+
+### 修法：连接期间就把终端摆进树里
+
+```dart
+case TerminalSessionState.connecting:
+  // 让终端赶在服务端第一个字节到达之前完成一次布局、拿到真实行列数。
+  return Stack(
+    children: [
+      Positioned.fill(child: _buildTerminal()),
+      Positioned.fill(child: _ConnectingView(message: _controller.progress)),
+    ],
+  );
+```
+
+连接画面 `_ConnectingView` 是一个铺满整块的 `Container` + `RadialGradient`
+（`loadingScreenStart` → `loadingScreenEnd` 两个不透明色），渐变会填满整个绘制矩形，
+所以终端躲在它后面看不见，观感与改动前一致。
+
+### 验证：日志顺序 + 像素，两条都指向同一结论
+
+修复前（第 259 轮那版）`JuiceSshBell` 出现在**任何**几何日志之前，说明横幅是在
+控件布局之前就被解析的；修复后顺序变成：
+
+```
+13:19:00.185 JuiceSshGeom: cols=80 rows=24 cursorY=0   <- 首帧，仍是 xterm 默认尺寸
+13:19:00.217 JuiceSshGeom: cols=50 rows=45 cursorY=0   <- 布局完成，真实行列数（此时仍在连接中）
+13:19:00.761 JuiceSshBell: received mode=0             <- 横幅到达：终端已经是 50×45
+13:19:00.767 JuiceSshGeom: cols=50 rows=45 cursorY=7 scrollback=0
+13:19:03.168 JuiceSshGeom(delayed): lines=45 cursorY=7 scrollback=0
+```
+
+`scrollback=0` 是关键：缓冲区不再比可视区多一行，第 0 行不会被顶出去。
+
+首行墨迹（同一状态：键位条可见、未做任何点击）：
+
+| 截图 | 首行墨迹 y | 说明 |
+| --- | --- | --- |
+| 原版 `o_term.png` | 137 | 基准 |
+| 第 259 轮版连上瞬间（`u1_initial.png`） | 128 | 被状态栏切掉约 9px，需点一下键位条才变 135 |
+| 本轮连上瞬间（`v1_connected.png`） | **135** | 与点过键位条之后的值一致，不再需要"点一下恢复" |
+
+`v0_connecting.png`（点连接后 900ms 抓的）与 `v1_connected.png` 完全相同 ——
+本地 sshd 建连只用了约 200ms，那一瞬间没截到；连接画面的不透明性由上面那处实现保证。
+
+顺带确认：**之后的 resize 不会再复现这个症状**。因为内容已经在最终宽度下写好，
+再 resize 只会补/删尾部空行（日志里 `widget=411x842 rows=45/49 bufferLines=45/49
+scrollback=0`），不会再触发折行重排。
+
+### 交付物
+
+四份 APK（`--split-per-abi` 三套 ABI + fat），SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73052147 字节），SHA-256：
+  `81BC146EAA10E362627217D8DC5BB255BCAE7B004E7324965FF94B009B76A3B6`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `479D2CA006B51FE1915B3314F6930465112973F755A3E0539BE107DBDA5FDBEF`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28638578 字节），SHA-256：
+  `A7B3FB804B21149CA3AE2835437AB0D8A799009DA724A4E0D8FA744411CC4E0E`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `4762306ACFDB6A4D4D3B3C29261D3CA8BE92FAB18FD9F11C5F07C8350C2DA04F`。
