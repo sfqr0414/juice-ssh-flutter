@@ -978,7 +978,16 @@ class _TerminalPageState extends State<TerminalPage> {
                   // 本复刻是 edge-to-edge（body 真的从 y=0 起），所以要自己让出状态栏，
                   // 否则第 0 行会被状态栏盖掉（实测首行墨迹落在 128）。
                   child: Padding(
-                    padding: EdgeInsets.only(top: topInset),
+                    // 键位条在**终端上方**时，它自己已经让出了状态栏高度（上面那个
+                    // `Padding(top: topInset)`）；终端这里再让一次，就会在
+                    // **键位条底端**多出一条和状态栏一样高的空隙 —— 用户报的
+                    // "黑客键盘设置成从终端上面弹出，黑客键盘底端高度会莫名多出来一截"。
+                    // 只有键位条**没在上方**（下置 / 已收起）时终端才需要自己让位。
+                    padding: EdgeInsets.only(
+                      top: (position == 0 && _popupKeyboardVisible)
+                          ? 0
+                          : topInset,
+                    ),
                     child: _buildBody(),
                   ),
                 ),
