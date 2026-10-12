@@ -9608,3 +9608,32 @@ Flutter 没有把这一行当成"输入框以外的区域"。
 
 * 端口转发创建-运行链路：**标记为未做端到端自动化取证**（编辑器与列表已有交互级证据）；
 * 本轮无代码改动、无新交付物，`dist/` 仍是第 285 轮四份。
+## 第 313-314 轮：交付物完整性核验（"交付对应平台 apk"这一条的凭据）
+
+用 `aapt dump badging` 直接读 `dist/` 四份 APK，而不是靠构建日志：
+
+| 文件 | versionCode / versionName | targetSdk | ABI | 字节 | SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `juice-ssh-flutter-3.2.2-arm64-v8a.apk` | 2200 / 3.2.2 | 29 | arm64-v8a | 30,918,184 | `80579B3F26070A64F2B887FB01140D2EBE52E078D32557759998E333C577A645` |
+| `juice-ssh-flutter-3.2.2-armeabi-v7a.apk` | 1200 / 3.2.2 | 29 | armeabi-v7a | 28,654,962 | `52A83ABAD9584EF7EB07B4C12C6104A1C0718D77663044C20698624C622F13A4` |
+| `juice-ssh-flutter-3.2.2-x86_64.apk` | 4200 / 3.2.2 | 29 | x86_64 | 32,369,913 | `9EB2A130B04C7D4148987BCA0BC83D9493BDAC376E4C15C81329A1C9BC26EBAC` |
+| `juice-ssh-flutter-3.2.2.apk`（fat） | 200 / 3.2.2 | 29 | arm64-v8a + armeabi-v7a + x86_64 | 73,068,531 | `D88797AE225A95DD5ACEFED67B3606EBF935D635CD50A898EC0EDDACA2ECE47E` |
+
+要点：
+
+* 包名统一 `com.juicessh.juice_ssh_flutter`；`versionName=3.2.2`（与原版对齐）；
+  versionCode 分平台递增方案正确（fat 200 / v7a 1200 / arm64 2200 / x86_64 4200，
+  互不冲突且可覆盖安装）；fat 包确实含**全部 3 个 ABI**；
+* 四份 SHA-256 与第 285 轮记录**完全一致** —— 即交付的就是含"交互式拖动禁用"整条链修复、
+  且已做 assert 收口（无日志噪音）的那一版；
+* `git status --porcelain` **干净**，HEAD 与文档一致 —— 源码、文档、交付物三者对齐。
+
+小瑕疵（如实记）：第一次核验时 `minSdk` 没打印出来，原因是我的 aapt 过滤表达式
+误匹配了 `compileSdkVersion` 所在行（`aapt` 会把 `compileSdkVersion` 也叫 `sdkVersion`）。
+正确写法是精确匹配 `sdkVersion:'`（带引号），本轮已复核。
+
+### 待办
+
+* 目标中"交付对应平台 apk"一条至此有据可查（四份包 + 元数据 + 可复核哈希）；
+* 仍等用户对四条实测项（htop 旋转不可拖动 / 复制选区可读 / 键盘上置无多余一截 /
+  密码重启后不再询问）的真机反馈。
