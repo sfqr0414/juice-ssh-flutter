@@ -9063,3 +9063,47 @@ JuiceSshInteractive: on=true off=false value=true
   `776816E1046DA71CD265E6B866856319712446C1F111A3408B13644C9D0E7225`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `D6F028D4C735A1C82E54CF827E9AB190EBAA1E391C1327F78E93E9346956F938`。
+## 第 283 轮：交互式标志按"窗口内最后一个匹配"判定（修退出序列被漏掉的锐边）
+
+第 282 轮记录在案的锐边：把"滚动尾巴 + 本块"拼起来扫描之后，如果 24 字符窗口里
+还留着上一个 `h`，那么紧随其后的 `l` 会被 `leaves && !enters` 判成"又来了一个进入"，
+**退出序列被漏掉、标志永远不复位** —— 交互式程序退出后手指拖动就再也恢复不了。
+
+修法：不再用"有进入且无退出"，而是比较窗口内**最后**一个匹配的位置，
+谁更靠后就以谁为准：
+
+```dart
+final ons  = _interactiveOn.allMatches(window).toList();
+final offs = _interactiveOff.allMatches(window).toList();
+final onAt  = ons.isEmpty  ? -1 : ons.last.start;
+final offAt = offs.isEmpty ? -1 : offs.last.start;
+final leaving = offAt > onAt;   // 最后出现的是退出序列
+```
+
+设备实测（重建安装后注入分块送达的序列）：
+
+| 注入 | 日志 | 含义 |
+| --- | --- | --- |
+| `ESC[?1000h` | `on=1 off=0 leaving=false value=true` | 进入交互式，标志置真 |
+| `ESC[?1000l` | `on=1 off=1 leaving=true value=false` | 退出，标志复位（修之前恒为 `value=true`，卡住） |
+
+至此整条链在设备上闭环验证：**跨块送达的私有模式能被识别**（第 281 轮修的缺陷）、
+**进入与退出都能正确翻转**（本轮修的锐边）。提交 `9062f50`。
+
+仅剩行为层一步未验证：标志为真时"手指拖动到底还动不动"。这需要新增
+`JuiceSshScroll`（拖动结束时打印 `position.pixels` / `maxScrollExtent`）再跑 A/B ——
+对照组的 `pixels` 应小于 `max`，实验组应恒等于 `max`。此前两次用像素差异做判据
+都失败（第 279 轮那次实验无效、第 280 轮两组 2.27% vs 2.27% 无区别），
+所以下一步不再依赖像素。
+
+### 交付物（本轮重出，含第 283 轮修复）
+
+四份 APK，SHA-256：
+- `dist/juice-ssh-flutter-3.2.2.apk`（73068531 字节），SHA-256：
+  `807D45D4A92DBAA8B5239E5842E1F7901E292CBD152FB0BB78B65EE76DBC0673`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `FAD23CC5617EA4E60F7F83BC40DF6A3C08A17426FDEEB6998AE44FB81041EAA9`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28654962 字节），SHA-256：
+  `7532E7FA511143004F50B442CCBC561E3D3585D00CA7D222A88DD2DF7D00052D`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `4A5CF24949574189A4B7D6599DF18141B38B13CF15F06A689F51D1B192D6E8B6`。
