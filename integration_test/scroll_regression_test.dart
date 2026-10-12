@@ -24,6 +24,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:juice_ssh_flutter/app/settings_controller.dart';
 import 'package:juice_ssh_flutter/data/juice_database.dart';
 import 'package:juice_ssh_flutter/data/models.dart';
 import 'package:juice_ssh_flutter/main.dart' as app;
@@ -223,6 +224,12 @@ void main() {
     // （键 `juicessh.pw.<user>@<host>`）。这是第 21 轮定位到的真因 —— 只种数据库时
     // 会话没有任何可用凭据，dartssh2 会在 TCP 连上后、banner 之前就关闭连接。
     await PasswordVault.write(user: 'juice', host: '10.0.2.2', password: 'juice');
+
+    // 教程覆盖层（`ColoredBox` 黑色 70%，**整屏吸收指针**）会盖住终端：第 51-66 轮
+    // 那批"探针 0 次 / 拖动无效"全部是它造成的（用户也确认它会正常出现）。
+    // 这里在种数据阶段直接把"教程已看"写掉，让覆盖层根本不出现，测量通道才可用。
+    await SettingsController.instance.setTerminalTutorialSeen(true);
+    print('SCROLL 教程已看=${SettingsController.instance.terminalTutorialSeen}');
     debugPrint('SCROLL 种数据: identity=$iid connection=$cid 口令已入加密库');
 
     // 主机密钥存储探测。宿主机探测用**内存实现**能连上，模拟器走

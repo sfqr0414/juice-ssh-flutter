@@ -47,6 +47,14 @@ class TerminalSessionController extends ChangeNotifier {
   /// 所以只能在这里识别"有交互式程序在跑"，再由页面禁掉手指拖动滚动。
   final ValueNotifier<bool> interactiveProgram = ValueNotifier<bool>(false);
 
+  /// 每次终端输出都自增：让终端那层的 `ScrollConfiguration`（拖动设备集合）能在
+  /// **备用屏进出时立刻重算**，而不是等下一次无关的重建。
+  ///
+  /// 没有它会出这个错：进入 htop/vim 后没有新的重建，页面仍保留"允许拖动"的旧配置，
+  /// 于是一边跑全屏程序一边还能滑动主屏回滚 —— 用户实测「交互界面又可以滑动了」。
+  /// 备用屏切换序列本身就会产生一次输出，htop 之类持续重绘更是每帧都会命中。
+  final ValueNotifier<int> outputTick = ValueNotifier<int>(0);
+
   /// 入站数据的**滚动尾巴**（最近 24 个字符）。
   ///
   /// 必须要有它：实测（第 281 轮）交互式私有模式会被**分块**送达 —— 现场注入
@@ -89,6 +97,8 @@ class TerminalSessionController extends ChangeNotifier {
     _interactiveTail =
         window.length > 24 ? window.substring(window.length - 24) : window;
     terminal.write(data);
+    // 写完再自增：此时 `terminal.isUsingAltBuffer` 已是新值，页面据此重算拖动设备。
+    outputTick.value++;
   }
 
   TerminalSessionController({

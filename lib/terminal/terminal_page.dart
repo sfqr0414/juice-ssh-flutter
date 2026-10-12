@@ -1409,9 +1409,13 @@ class _TerminalPageState extends State<TerminalPage> {
                     // 实时状态 `terminal.isUsingAltBuffer`，而不是"有交互式程序在跑"这个
                     // 会误判/滞留的启发式标志 —— 后者一旦为真，普通 shell 就彻底滑不动
                     // （用户实测「tree -L 2 输出超屏后无法滚屏」）。
-                    // 重建由 `interactiveProgram` 通知驱动（它正好在备用屏进出的序列上翻转），
-                    // 只在终端这一层生效，键位条等其它滚动区不受牵连。
-                    valueListenable: _controller.interactiveProgram,
+                    // 重建由"备用屏标志 + 每次终端输出"共同驱动：前者在进出序列上翻转，
+                    // 后者（`outputTick`）保证 htop 这类持续重绘时配置不会过期 —— 否则
+                    // 会出现"进了交互程序仍然能滑"（用户实测）。只在终端这一层生效。
+                    valueListenable: Listenable.merge(<Listenable>[
+                      _controller.interactiveProgram,
+                      _controller.outputTick,
+                    ]),
                     builder: (context, _, child) => ScrollConfiguration(
                       behavior: ScrollConfiguration.of(context).copyWith(
                         dragDevices: _controller.terminal.isUsingAltBuffer
