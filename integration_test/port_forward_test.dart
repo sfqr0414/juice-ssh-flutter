@@ -26,6 +26,23 @@ Future<void> waitForHome(WidgetTester tester) async {
   fail('首页 30 秒内未就绪');
 }
 
+/// 从任意位置回到"连接管理"页，再切到指定标签。
+/// 第 336 轮实测：保存连接后应用会退回首页，直接找 Port Forwards 标签必然失败。
+Future<void> gotoManageTab(WidgetTester tester, String tab) async {
+  for (var attempt = 0; attempt < 4; attempt++) {
+    if (await tapLabel(tester, tab)) {
+      debugPrint('PF 已切到 $tab');
+      return;
+    }
+    // 还没到连接管理页：回首页再进去
+    if (!await tapLabel(tester, 'Manage Connections')) {
+      await tapLabel(tester, 'Back');
+    }
+    await tester.pump(const Duration(seconds: 1));
+  }
+  debugPrint('PF 未能切到 $tab');
+}
+
 Finder finderFor(String label, {bool fab = false}) {
   var f = find.byTooltip(label);
   if (f.evaluate().isNotEmpty) return f;
@@ -98,7 +115,7 @@ void main() {
     debugPrint('PF 连接列表含 pfhost = ${find.text('pfhost').evaluate().isNotEmpty}');
 
     // ---- 3. 端口转发 ----
-    debugPrint('PF 点 Port Forwards = ${await tapLabel(tester, 'Port Forwards')}');
+    await gotoManageTab(tester, 'Port Forwards');
     debugPrint('PF 点 New Port Forward = ${await tapLabel(tester, 'New Port Forward', fab: true)}');
     debugPrint('PF 端口转发编辑器 TextField=${find.byType(TextField).evaluate().length}');
     await fill(tester, 0, 'pf1');
