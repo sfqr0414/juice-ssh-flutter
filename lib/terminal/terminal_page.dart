@@ -993,22 +993,12 @@ class _TerminalPageState extends State<TerminalPage> {
                           ? 0
                           : topInset,
                     ),
-                    // 交互式程序（htop/vim）在跑时**手指拖动不滚动** —— 用户实测
-                    // "进 htop 不能滑（很好），但旋转到横屏又能滑了，转回竖屏还能滑"。
-                    // 根因是旋转让视口变矮，主屏回滚缓冲出现滚动余量；xterm 的
-                    // `simulateScroll` 只管备用屏，所以改用 `ScrollConfiguration`
-                    // 把手指拖动设备从内层 `Scrollable` 的拖动集合里去掉
-                    // （滚轮 / 程序化滚动 / 滚动条仍然可用）。交互式程序退出即恢复。
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: _controller.interactiveProgram,
-                      builder: (context, interactive, child) => ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context).copyWith(
-                          dragDevices: interactive ? const {} : null,
-                        ),
-                        child: child!,
-                      ),
-                      child: _buildBody(),
-                    ),
+                    // 页面级不再剥夺任何拖动设备：`dragDevices` 一旦为空，普通 shell 就
+                    // 彻底滑不动，而它依赖的"交互式程序"标志会误判/滞留（普通 shell 自己
+                    // 开鼠标上报模式、全屏程序退出未复位、保活会话沿用旧值、页面不重建导致
+                    // 配置过期）。禁滑改为只作用在终端自身的滚动体上（见 `_buildTerminal`），
+                    // 判据用实时的 `terminal.isUsingAltBuffer`。
+                    child: _buildBody(),
                   ),
                 ),
                 if (position == 1 && _popupKeyboardVisible) _buildKeyRow(),
@@ -1144,6 +1134,10 @@ class _TerminalPageState extends State<TerminalPage> {
     });
   }
 
+  /// 兜底驱动上一次写入的滚动位置：用来识别"终端自己的 `Scrollable` 是否已经在滚"，
+  /// 避免原生拖动 + 兜底驱动叠加成双倍速度。
+  double? _lastDriverPixels;
+
   void _onTerminalPointerMove(PointerMoveEvent event) {
     final origin = _longPressOrigin;
     // 这里**不能**提前 `return`：下方的"主屏拖动滚动"必须在每次指针移动时执行。
@@ -1163,15 +1157,15 @@ class _TerminalPageState extends State<TerminalPage> {
     //
     // 用 `assert` 包住：断言在 release 包中被整段剥离，交付的 APK 不会因为
     // 每次指针移动都打印而刷爆 logcat；调试/性能分析时仍可用。
-    // 主屏（普通 shell）：xterm 的 `TerminalGestureHandler` 用 `PanGestureRecognizer`
-    // 压在内部 `Scrollable` 之上（`terminal_view.dart:299` +
-    // `gesture/gesture_detector.dart:142`），垂直拖动会被它赢走，滚动视口永远收不到
-    // —— 用户报的"普通模式下不能滑屏滚动"就是这个。`jumpTo` 绕过竞技场所以照样有效，
-    // 极具迷惑性。
-    //
-    // 这里用**裸指针**（`Listener` 不进竞技场）自己驱动滚动：手指下滑 → 回看更早的历史。
-    // 备用屏（htop/vim 等）不驱动，保持"交互命令重绘期间禁止滑动"的原要求。
-    if (!_controller.interactiveProgram.value &&
+    // 触摸滚动由这里**独家**负责：终端那个 `Scrollable` 的拖动设备已被永久移除
+    // （见 `_buildTerminal` 里的 `ScrollConfiguration(dragDevices: const {})`）。
+    // 判据用 `terminal.isUsingAltBuffer` —— xterm 的**实时**备用屏状态
+    // （`xterm-4.0.0/lib/src/terminal.dart:214`）：
+    //   主屏（普通 shell）→ 驱动滚动，手指下滑回看更早历史；
+    //   备用屏（htop/vim/less）→ 不驱动，满足"交互命令重绘期间禁止滑动"。
+    // 之前这里与 `dragDevices` 都依赖 `interactiveProgram` 这个启发式标志，标志一旦
+    // 误判或滞留，普通 shell 就彻底滑不动（用户实测「`tree -L 2` 输出超屏后无法滚屏」）。
+    if (!_controller.terminal.isUsingAltBuffer &&
         !_selectingStart &&
         !_selectingEnd &&
         _terminalScroll.hasClients &&
@@ -1180,9 +1174,18 @@ class _TerminalPageState extends State<TerminalPage> {
       // 拖动期间键盘/教程层可能正在改变布局：内容尺寸未就绪、或区间非法时直接放弃，
       // 否则 `jumpTo` 会在断言里炸掉（`min > max` / 无 content dimensions）。
       if (pos.hasContentDimensions && pos.maxScrollExtent > pos.minScrollExtent) {
-        final target = (pos.pixels - event.delta.dy)
-            .clamp(pos.minScrollExtent, pos.maxScrollExtent);
-        if (target != pos.pixels) pos.jumpTo(target);
+        // 兜底驱动：终端自己的 `Scrollable` 若已经把位置滚动过了（原生拖动生效），
+        // 这里不再叠加，避免双倍速度；若它被拦下/失效，则由这里接管滚动。
+        if (pos.pixels != _lastDriverPixels) {
+          _lastDriverPixels = pos.pixels;
+        } else {
+          final target = (pos.pixels - event.delta.dy)
+              .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+          if (target != pos.pixels) {
+            pos.jumpTo(target);
+            _lastDriverPixels = target;
+          }
+        }
       }
     }
     assert(() {
@@ -1401,7 +1404,23 @@ class _TerminalPageState extends State<TerminalPage> {
                   removeBottom: true,
                   removeLeft: true,
                   removeRight: true,
-                  child: TerminalView(
+                  child: ValueListenableBuilder<bool>(
+                    // 仅在**当前真的处于备用屏**时剥夺终端原生触摸拖动：判据取 xterm 的
+                    // 实时状态 `terminal.isUsingAltBuffer`，而不是"有交互式程序在跑"这个
+                    // 会误判/滞留的启发式标志 —— 后者一旦为真，普通 shell 就彻底滑不动
+                    // （用户实测「tree -L 2 输出超屏后无法滚屏」）。
+                    // 重建由 `interactiveProgram` 通知驱动（它正好在备用屏进出的序列上翻转），
+                    // 只在终端这一层生效，键位条等其它滚动区不受牵连。
+                    valueListenable: _controller.interactiveProgram,
+                    builder: (context, _, child) => ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(context).copyWith(
+                        dragDevices: _controller.terminal.isUsingAltBuffer
+                            ? const {}
+                            : null,
+                      ),
+                      child: child!,
+                    ),
+                    child: TerminalView(
                     _controller.terminal,
                     controller: _terminalController,
                     scrollController: _terminalScroll,
@@ -1424,7 +1443,8 @@ class _TerminalPageState extends State<TerminalPage> {
                     // "进入交互命令时仍然可以上下滑动，和原版不一致"，所以备用屏里关掉
                     // 这个模拟 —— 它与主屏的历史滚动**无关**（第 44 轮用实验证实：改成
                     // true 数值完全不变），主屏滑不动的原因在别处。
-                    simulateScroll: false,
+                      simulateScroll: false,
+                    ),
                   ),
                 ),
               );
