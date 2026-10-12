@@ -1134,10 +1134,6 @@ class _TerminalPageState extends State<TerminalPage> {
     });
   }
 
-  /// 兜底驱动上一次写入的滚动位置：用来识别"终端自己的 `Scrollable` 是否已经在滚"，
-  /// 避免原生拖动 + 兜底驱动叠加成双倍速度。
-  double? _lastDriverPixels;
-
   void _onTerminalPointerMove(PointerMoveEvent event) {
     final origin = _longPressOrigin;
     // 这里**不能**提前 `return`：下方的"主屏拖动滚动"必须在每次指针移动时执行。
@@ -1157,37 +1153,16 @@ class _TerminalPageState extends State<TerminalPage> {
     //
     // 用 `assert` 包住：断言在 release 包中被整段剥离，交付的 APK 不会因为
     // 每次指针移动都打印而刷爆 logcat；调试/性能分析时仍可用。
-    // 触摸滚动由这里**独家**负责：终端那个 `Scrollable` 的拖动设备已被永久移除
-    // （见 `_buildTerminal` 里的 `ScrollConfiguration(dragDevices: const {})`）。
-    // 判据用 `terminal.isUsingAltBuffer` —— xterm 的**实时**备用屏状态
-    // （`xterm-4.0.0/lib/src/terminal.dart:214`）：
-    //   主屏（普通 shell）→ 驱动滚动，手指下滑回看更早历史；
-    //   备用屏（htop/vim/less）→ 不驱动，满足"交互命令重绘期间禁止滑动"。
-    // 之前这里与 `dragDevices` 都依赖 `interactiveProgram` 这个启发式标志，标志一旦
-    // 误判或滞留，普通 shell 就彻底滑不动（用户实测「`tree -L 2` 输出超屏后无法滚屏」）。
-    if (!_controller.terminal.isUsingAltBuffer &&
-        !_selectingStart &&
-        !_selectingEnd &&
-        _terminalScroll.hasClients &&
-        event.delta.dy.abs() > 0.5) {
-      final pos = _terminalScroll.position;
-      // 拖动期间键盘/教程层可能正在改变布局：内容尺寸未就绪、或区间非法时直接放弃，
-      // 否则 `jumpTo` 会在断言里炸掉（`min > max` / 无 content dimensions）。
-      if (pos.hasContentDimensions && pos.maxScrollExtent > pos.minScrollExtent) {
-        // 兜底驱动：终端自己的 `Scrollable` 若已经把位置滚动过了（原生拖动生效），
-        // 这里不再叠加，避免双倍速度；若它被拦下/失效，则由这里接管滚动。
-        if (pos.pixels != _lastDriverPixels) {
-          _lastDriverPixels = pos.pixels;
-        } else {
-          final target = (pos.pixels - event.delta.dy)
-              .clamp(pos.minScrollExtent, pos.maxScrollExtent);
-          if (target != pos.pixels) {
-            pos.jumpTo(target);
-            _lastDriverPixels = target;
-          }
-        }
-      }
-    }
+    // 这里**不再**自己驱动滚动。
+    //
+    // 曾经用裸指针按 `event.delta.dy` 调 `_terminalScroll.jumpTo` 做"兜底滚动"，
+    // 依据是"xterm 的 `PanGestureRecognizer` 会抢走垂直拖动"这个**错误**判断 ——
+    // 源码里那个 pan 的 `supportedDevices: {PointerDeviceKind.mouse}`，触摸根本不参与
+    // （`xterm-4.0.0/lib/src/ui/gesture/gesture_detector.dart:142-147`）。
+    // 主屏的触摸滚动一直是内部 `Scrollable` 的职责，而 `jumpTo` 会打断它的拖动活动：
+    // 实测表现就是"滑动不顺畅、不能一滑滚多远"（甩动惯性没了），还会与原生拖动打架。
+    // 备用屏的禁滑由 `_buildTerminal` 里的 `ScrollConfiguration(dragDevices: {})` 负责，
+    // 判据是 xterm 实时状态 `terminal.isUsingAltBuffer`（已用真实拖动验证：不滚）。
     assert(() {
       if (_terminalScroll.hasClients) {
         final pos = _terminalScroll.position;

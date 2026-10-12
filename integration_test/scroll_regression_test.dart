@@ -455,13 +455,26 @@ void main() {
     // 判据必须用"离底距离"，不能用 `pixels` 的绝对差：贴底时键盘/教程层改变布局
     // 会把 `maxScrollExtent` 抬高，`pixels` 跟着涨 —— 那是"仍然贴底"，不是滚动，
     // 第 46/47 轮就是被这个假阳性骗过（读到 695.8 > max=384.5）。
+    // 两种模式共用这一份代码：
+    //   普通 shell → 拖动**应**产生滚动；
+    //   备用屏（htop/vim/less）→ 拖动**不应**产生任何滚动。
+    // 备用屏那一半用 `--dart-define=ALT_SCREEN=true` 跑，服务器同时用
+    // `--many-lines --alt-screen`（主屏先写满 60 行，再切备用屏）—— 这样"没动"才是
+    // 有效断言：主屏有回滚余量（maxScrollExtent>0），不是空洞通过。
+    const altScreen = bool.fromEnvironment('ALT_SCREEN');
     final beforeFromBottom = maxT - beforeT;
     final afterFromBottom =
         terminalState.position.maxScrollExtent - terminalState.position.pixels;
-    debugPrint('SCROLL 离底距离: $beforeFromBottom → $afterFromBottom '
-        '(越大说明越早的历史可见)');
+    debugPrint('SCROLL 离底距离(${altScreen ? "备用屏" : "普通模式"}): '
+        '$beforeFromBottom → $afterFromBottom '
+        '(max=${terminalState.position.maxScrollExtent.toStringAsFixed(1)})');
 
-    expect(afterFromBottom > beforeFromBottom + 1, isTrue,
-        reason: '普通模式下拖动终端没有增加可见历史 —— 就是用户报的滑不动');
+    if (altScreen) {
+      expect(afterFromBottom <= beforeFromBottom + 1, isTrue,
+          reason: '备用屏（交互式全屏程序）里拖动终端不应产生滚动');
+    } else {
+      expect(afterFromBottom > beforeFromBottom + 1, isTrue,
+          reason: '普通模式下拖动终端没有增加可见历史 —— 就是用户报的滑不动');
+    }
   });
 }
