@@ -255,7 +255,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 
   void _warn(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ------------------------------------------------------------------ 视图 --
@@ -324,6 +325,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                   right: 16,
                   bottom: 16,
                   child: FloatingActionButton(
+                    heroTag: null,
                     onPressed: _create,
                     backgroundColor: palette.primaryBold,
                     foregroundColor: Colors.white,

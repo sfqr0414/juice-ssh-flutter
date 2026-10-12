@@ -93,13 +93,13 @@ class PagerList extends StatelessWidget {
             itemBuilder: itemBuilder,
             // 原版分隔线是空 selector，所以这里放一条透明的 0.5dp 间隔，
             // 保留原版的间距观感而不画线。
-            separatorBuilder: (context, index) =>
-                const SizedBox(height: 0.5),
+            separatorBuilder: (context, index) => const SizedBox(height: 0.5),
           ),
         Positioned(
           right: fabMargin,
           bottom: fabMargin,
           child: FloatingActionButton(
+            heroTag: null,
             onPressed: onNew,
             backgroundColor: palette.primaryBold,
             foregroundColor: Colors.white,
@@ -364,7 +364,9 @@ class JuiceListItem extends StatelessWidget {
               SizedBox(
                 width: 40,
                 child: IconTheme(
-                  data: IconThemeData(color: leadingColor ?? palette.textHeading),
+                  data: IconThemeData(
+                    color: leadingColor ?? palette.textHeading,
+                  ),
                   child: leading!,
                 ),
               ),

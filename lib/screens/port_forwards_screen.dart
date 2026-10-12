@@ -8,6 +8,7 @@ import '../widgets/juice_dialogs.dart';
 import '../widgets/juice_popup_menu.dart';
 import '../widgets/pager_list.dart';
 import 'identities_screen.dart';
+
 import 'dart:async';
 
 import 'port_forward_editor_screen.dart';
@@ -89,7 +90,7 @@ class PortForwardsScreen extends StatefulWidget {
 
   /// 点击行时的回调；默认自己 push [PortForwardEditorScreen]。
   final void Function(BuildContext context, PortForward forward)?
-      onEditPortForward;
+  onEditPortForward;
 
   @override
   State<PortForwardsScreen> createState() => PortForwardsScreenState();
@@ -253,8 +254,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
   /// 建立/断开；这里直接用 [PortForwardService.toggle] 一次做完。
   /// 该连接没有活动会话时什么也不做（开关保持关着）。
   Future<void> _toggleForward(PortForward forward) async {
-    final service =
-        PortForwardRegistry.instance.serviceFor(forward.connectionId);
+    final service = PortForwardRegistry.instance.serviceFor(
+      forward.connectionId,
+    );
     if (service == null) return;
     await service.toggle(forward);
     if (mounted) setState(() {});
@@ -269,7 +271,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     if (!mounted) return;
     setState(() {
       _forwards = forwards;
-      _connections = {for (final connection in connections) connection.id: connection};
+      _connections = {
+        for (final connection in connections) connection.id: connection,
+      };
       _loading = false;
     });
   }
@@ -295,7 +299,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     final s = context.s;
     final connection = _connectionOf(forward);
     if (connection == null) return s('invalid_connection');
-    return s.format('via_connection_string', [_connectionDisplayName(connection)]);
+    return s.format('via_connection_string', [
+      _connectionDisplayName(connection),
+    ]);
   }
 
   /// `PortForward.t(Context)` 的等价实现（`PortForward.smali` 第 226-433 行）。
@@ -322,19 +328,20 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     final host = _effectiveHost(forward, connection);
 
     return switch (forward.mode) {
-      PortForwardMode.dynamic =>
-        s.format('socks_forward_description', [localPort]),
+      PortForwardMode.dynamic => s.format('socks_forward_description', [
+        localPort,
+      ]),
       PortForwardMode.remote => s.format('remote_forward_description_short', [
-          connection?.address ?? '',
-          localPort,
-          host,
-          remotePort,
-        ]),
+        connection?.address ?? '',
+        localPort,
+        host,
+        remotePort,
+      ]),
       PortForwardMode.local => s.format('local_forward_description_short', [
-          localPort,
-          host,
-          remotePort,
-        ]),
+        localPort,
+        host,
+        remotePort,
+      ]),
     };
   }
 
@@ -352,9 +359,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
   }
 
   String _subtitle(PortForward forward) => switch (widget.rowStyle) {
-        PortForwardRowStyle.viaConnection => _viaSubtitle(forward),
-        PortForwardRowStyle.forwardDescription => _descriptionSubtitle(forward),
-      };
+    PortForwardRowStyle.viaConnection => _viaSubtitle(forward),
+    PortForwardRowStyle.forwardDescription => _descriptionSubtitle(forward),
+  };
 
   // ---------------------------------------------------------- 交互 --
 
@@ -514,8 +521,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
             separatorBuilder: (_, _) => const SizedBox(height: 0.5),
             itemBuilder: (context, index) {
               final forward = _forwards[index];
-              final service = PortForwardRegistry.instance
-                  .serviceFor(forward.connectionId);
+              final service = PortForwardRegistry.instance.serviceFor(
+                forward.connectionId,
+              );
               final active = service?.isActive(forward) ?? false;
               // 原版浮动菜单以**触点**为锚点（第 58/59 轮实测：底色框左上角 =
               // 触点坐标）。记下按下的位置，同时保留行自身的按压反馈。
@@ -557,6 +565,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
           right: 16,
           bottom: 16,
           child: FloatingActionButton(
+            heroTag: null,
             onPressed: () => _openEditor(null),
             backgroundColor: palette.primaryBold,
             foregroundColor: Colors.white,

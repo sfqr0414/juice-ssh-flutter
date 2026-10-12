@@ -108,9 +108,8 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
   }
 
   void _warn(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   /// `snippet_dialog.xml` 的对话框。
@@ -167,10 +166,9 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
           ),
           JuiceDialogAction(
             label: s('ok'),
-            onPressed: () => Navigator.of(context).pop((
-              name: nameController.text,
-              content: contentController.text,
-            )),
+            onPressed: () => Navigator.of(
+              context,
+            ).pop((name: nameController.text, content: contentController.text)),
           ),
         ],
       ),
@@ -265,6 +263,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
       // 实测截图 1820..2200 带内有 (216,192,65)x5070 —— 与通讯录那个 FAB 的像素数完全
       // 相同，即同一套 FAB 样式。第 65 轮补上（此前只有右上角动作，底部是空的）。
       floatingActionButton: FloatingActionButton(
+        heroTag: null,
         // 取色必须与 `port_forwards_screen` / `identities_screen` / `groups_screen`
         // 的 FAB 保持一致：`palette.primaryBold` + 白色图标。实测原版片段页 FAB 是
         // (216,192,65) = `#D8C041`（暗色的 `primaryBold`），而主题里的
@@ -279,39 +278,39 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _snippets.isEmpty
-              ? _buildEmptyState(context)
-              : ListView.separated(
-                  itemCount: _snippets.length,
-                  separatorBuilder: (_, _) => Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: context.palette.cardItemDivider,
+          ? _buildEmptyState(context)
+          : ListView.separated(
+              itemCount: _snippets.length,
+              separatorBuilder: (_, _) => Divider(
+                height: 1,
+                thickness: 1,
+                color: context.palette.cardItemDivider,
+              ),
+              itemBuilder: (context, index) {
+                final snippet = _snippets[index];
+                // 原版浮动菜单以**触点**为锚点（第 59 轮实测：底色框左上角
+                // = 触点坐标）。记下按下的位置，同时保留行自身的长按反馈。
+                Offset? lastTouch;
+                return Listener(
+                  onPointerDown: (event) => lastTouch = event.position,
+                  child: CardListItem(
+                    title: snippet.name,
+                    subtitle: snippet.content,
+                    leadingIcon: Icons.code,
+                    onTap: () => _edit(snippet),
+                    onLongPress: () {
+                      final at = lastTouch;
+                      _showContextMenu(
+                        snippet,
+                        at == null
+                            ? juiceContextMenuAnchor(context)
+                            : Rect.fromLTWH(at.dx, at.dy, 0, 0),
+                      );
+                    },
                   ),
-                  itemBuilder: (context, index) {
-                    final snippet = _snippets[index];
-                    // 原版浮动菜单以**触点**为锚点（第 59 轮实测：底色框左上角
-                    // = 触点坐标）。记下按下的位置，同时保留行自身的长按反馈。
-                    Offset? lastTouch;
-                    return Listener(
-                      onPointerDown: (event) => lastTouch = event.position,
-                      child: CardListItem(
-                        title: snippet.name,
-                        subtitle: snippet.content,
-                        leadingIcon: Icons.code,
-                        onTap: () => _edit(snippet),
-                        onLongPress: () {
-                          final at = lastTouch;
-                          _showContextMenu(
-                            snippet,
-                            at == null
-                                ? juiceContextMenuAnchor(context)
-                                : Rect.fromLTWH(at.dx, at.dy, 0, 0),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
+                );
+              },
+            ),
     );
   }
 

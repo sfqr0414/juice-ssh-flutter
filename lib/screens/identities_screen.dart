@@ -78,9 +78,9 @@ class CardListItem extends StatelessWidget {
     this.onTap,
     this.onLongPress,
   }) : assert(
-          leadingIcon == null || leadingIconGlyph == null,
-          'leadingIcon 与 leadingIconGlyph 只能二选一',
-        );
+         leadingIcon == null || leadingIconGlyph == null,
+         'leadingIcon 与 leadingIconGlyph 只能二选一',
+       );
 
   /// 行高，来自 `@dimen/list_item_height`。
   static const double height = 72;
@@ -244,7 +244,10 @@ class IdentityListActions {
   static const String newIdentityKey = 'new_identity';
 
   /// 新建身份菜单项，与 `menu_addressbook_identities.xml` 等价的 Flutter 写法。
-  static Widget newIdentityButton(BuildContext context, VoidCallback onPressed) {
+  static Widget newIdentityButton(
+    BuildContext context,
+    VoidCallback onPressed,
+  ) {
     return IconButton(
       icon: const Icon(Icons.add),
       tooltip: context.s(newIdentityKey),
@@ -394,9 +397,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
   /// 新建身份 —— 对应 `@string/new_identity` / FAB `@id/fab_new_identity`。
   Future<void> _createIdentity() async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => const IdentityEditorScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => const IdentityEditorScreen()),
     );
     if (!mounted) return;
     await reload();
@@ -487,7 +488,9 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     }
     // 只展示私钥文本本身：公钥需要从私钥推导（原版用 BouncyCastle），
     // 属于 SSH 层的职责，不在本次范围内。
-    final body = publicKey ? s('no_private_key_selected') : identity.privateKey!;
+    final body = publicKey
+        ? s('no_private_key_selected')
+        : identity.privateKey!;
     if (!mounted) return;
     await JuiceDialogs.message(
       context,
@@ -500,7 +503,9 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     final confirmed = await JuiceDialogs.confirm(
       context,
       title: s('delete'),
-      message: s.format('are_you_sure_you_want_to_remove_x', [_titleOf(identity)]),
+      message: s.format('are_you_sure_you_want_to_remove_x', [
+        _titleOf(identity),
+      ]),
       confirmLabel: s('delete'),
     );
     if (!confirmed || !mounted) return;
@@ -593,6 +598,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
           right: 16,
           bottom: 16,
           child: FloatingActionButton(
+            heroTag: null,
             onPressed: _createIdentity,
             backgroundColor: palette.primaryBold,
             foregroundColor: Colors.white,
