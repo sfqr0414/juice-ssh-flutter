@@ -21,12 +21,23 @@ void main() {
 
   testWidgets('冷启动：首页可渲染且关键入口存在', (tester) async {
     app.main();
-    await tester.pumpAndSettle(const Duration(seconds: 8));
 
+    // 应用启动包含异步初始化（安全存储 / 主题 / 保险库），首页不是立刻可用；
+    // 首跑时单次 pumpAndSettle 只等到一个 14 个组件的空架子，
+    // 因此这里改为轮询等待，上限 30 秒（60 × 500ms）。
     final scaffolds = find.byType(Scaffold);
     final inks = find.byType(InkWell);
+    var ready = false;
+    for (var i = 0; i < 60; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+      if (scaffolds.evaluate().isNotEmpty && inks.evaluate().length > 3) {
+        ready = true;
+        break;
+      }
+    }
     debugPrint(
-      'JuiceSmoke: Scaffold=${scaffolds.evaluate().length} '
+      'JuiceSmoke: ready=$ready '
+      'Scaffold=${scaffolds.evaluate().length} '
       'InkWell=${inks.evaluate().length} '
       'widgets=${tester.allWidgets.length}',
     );
