@@ -1,13 +1,14 @@
-// 端口转发流程的 UI 端到端测试（第 332 轮起，第 334 轮修正查找方式）。
+// 端口转发 + 连接创建的 UI 端到端测试（第 332 轮起，第 335 轮加建连接）。
 //
-// 背景：这条链路此前用 adb 坐标点击，反复失败且失败原因全在手法上
-// （写死坐标被聚焦自动滚动带偏、误发 BACK 退出编辑器、软键盘盖住下半屏，
-// 见 docs/IMPLEMENTATION-NOTES.md 第 307-311 轮）。现在改在进程内驱动。
+// 关键背景见 docs/IMPLEMENTATION-NOTES.md 第 307-311 轮与第 334 轮：
+//  * adb 坐标法不可用（写死坐标被聚焦滚动带偏、BACK 会退编辑器、软键盘遮挡）；
+//  * 本载体在应用进程内驱动 UI，与坐标无关；
+//  * `New Port Forward` / `Save` 等**不是 Text 控件**（是带 tooltip 的按钮），
+//    必须用 tooltip/语义查找，`find.text` 找不到；
+//  * 端口转发编辑器有 **4 个 TextField**：Name / Port(from) / Destination / Port(to)。
 //
-// 第 334 轮的关键发现：`New Port Forward` 在**语义树**里存在（uiautomator 转储能看到，
-// 早期用坐标点它也能打开编辑器），但在**控件树里不是 Text 控件** —— 它是带 tooltip 的
-// 按钮，所以 find.text 永远找不到。查找顺序因此改为：
-//   tooltip → 语义标签 → 文本 → （可选）FloatingActionButton 类型兜底。
+// 数据会被 `flutter test` 的重新安装清空，所以选择器里没有可选连接，
+// 本测试因此先创建一条连接，再去做端口转发。
 //
 // 运行：flutter test integration_test/port_forward_test.dart -d emulator-5554
 
@@ -27,7 +28,6 @@ Future<void> waitForHome(WidgetTester tester) async {
   fail('首页 30 秒内未就绪');
 }
 
-/// 按"tooltip → 语义标签 → 文本 → 类型兜底"的顺序找控件。
 Finder finderFor(String label, {bool fab = false}) {
   var f = find.byTooltip(label);
   if (f.evaluate().isNotEmpty) {
@@ -39,7 +39,7 @@ Finder finderFor(String label, {bool fab = false}) {
       return f;
     }
   } catch (_) {
-    // 语义树未启用时忽略
+    // 语义树不可用时忽略
   }
   f = find.text(label);
   if (f.evaluate().isNotEmpty) {
@@ -61,10 +61,9 @@ Future<bool> tapText(WidgetTester tester, String label, {bool fab = false}) asyn
     f = finderFor(label, fab: fab);
   }
   if (f.evaluate().isEmpty) {
-    debugPrint('JuicePF 找不到: $label（等待 10 秒后仍未出现）');
+    debugPrint('JuicePF 找不到: $label');
     return false;
   }
-  debugPrint('JuicePF 命中 $label -> 匹配 ${f.evaluate().length} 个');
   await tester.ensureVisible(f.first);
   await tester.pump(const Duration(milliseconds: 300));
   await tester.tap(f.first, warnIfMissed: false);
@@ -85,27 +84,57 @@ List<String> visibleTexts(WidgetTester tester) {
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('端口转发：进入编辑器并打印字段结构', (tester) async {
+  testWidgets('建连接 → 建端口转发 → 保存后列表出现条目', (tester) async {
     app.main();
     await waitForHome(tester);
 
     debugPrint('JuicePF 点 Manage Connections = ${await tapText(tester, 'Manage Connections')}');
     debugPrint('JuicePF 连接页文本=${visibleTexts(tester)}');
 
+    // ---- 第一步：建一条连接，供端口转发的 Connection 选择器使用 ----
+    debugPrint('JuicePF 点 New Connection = ${await tapText(tester, 'New Connection', fab: true)}');
+    debugPrint('JuicePF 新建连接页文本=${visibleTexts(tester)}');
+    final nFields = find.byType(TextField).evaluate().length;
+    debugPrint('JuicePF 新建连接页 TextField=$nFields');
+    if (nFields >= 2) {
+      await tester.enterText(find.byType(TextField).at(0), 'pfhost');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.enterText(find.byType(TextField).at(1), '10.0.2.2');
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    debugPrint('JuicePF 填后文本=${visibleTexts(tester)}');
+    debugPrint('JuicePF 点 Save = ${await tapText(tester, 'Save')}');
+    debugPrint('JuicePF 保存后文本=${visibleTexts(tester)}');
+
+    // ---- 第二步：端口转发标签页 + 新建 ----
     debugPrint('JuicePF 点 Port Forwards = ${await tapText(tester, 'Port Forwards')}');
     debugPrint('JuicePF 端口转发页文本=${visibleTexts(tester)}');
-
     debugPrint('JuicePF 点 New Port Forward = ${await tapText(tester, 'New Port Forward', fab: true)}');
+    debugPrint('JuicePF 编辑器文本=${visibleTexts(tester)}');
 
-    final labels = visibleTexts(tester);
-    debugPrint('JuicePF 当前页文本=$labels');
-    debugPrint(
-      'JuicePF TextFormField=${find.byType(TextFormField).evaluate().length} '
-      'TextField=${find.byType(TextField).evaluate().length} '
-      'FAB=${find.byType(FloatingActionButton).evaluate().length}',
-    );
-    debugPrint('JuicePF 有 Save = ${find.text('Save').evaluate().isNotEmpty}');
+    final fields = find.byType(TextField);
+    debugPrint('JuicePF 编辑器 TextField=${fields.evaluate().length}');
+    if (fields.evaluate().length >= 4) {
+      await tester.enterText(fields.at(0), 'pf1'); // Name
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(fields.at(1), '9999'); // Port (from)
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(fields.at(2), '127.0.0.1'); // Destination
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.enterText(fields.at(3), '2222'); // Port (to)
+      await tester.pump(const Duration(milliseconds: 300));
+    }
+    debugPrint('JuicePF 填充后编辑器文本=${visibleTexts(tester)}');
 
-    expect(labels, isNotEmpty, reason: '页面应有可见文案');
+    // Connection 选择器：(Pick one) → 选第一条连接
+    debugPrint('JuicePF 点选择器 = ${await tapText(tester, '(Pick one)')}');
+    debugPrint('JuicePF 选择器文本=${visibleTexts(tester)}');
+    debugPrint('JuicePF 选 pfhost = ${await tapText(tester, 'pfhost')}');
+    debugPrint('JuicePF 选后编辑器文本=${visibleTexts(tester)}');
+
+    debugPrint('JuicePF 点 Save = ${await tapText(tester, 'Save')}');
+    debugPrint('JuicePF 保存后文本=${visibleTexts(tester)}');
+
+    expect(visibleTexts(tester), isNotEmpty, reason: '页面应有可见文案');
   });
 }
