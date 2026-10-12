@@ -7145,3 +7145,79 @@ was preempted`、`null ctx`、`Failed to import memory to ColorBufferGl`，混�
 
 - `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
   `C96ED2F8D624FAEF1E4D66601B3E04537A3E27C97AFCF409354E34A08EBF4B01`。
+## 第 249 轮：连接编辑器行位核对、宿主密钥固定、端到端地面真值
+
+### 一、连接编辑器三行 EditText：行位对齐，值内容起点暂不下结论
+
+克隆编辑器节点的行位与原版 `o_ed.png` 的文本行带（同为亮色）逐行对上：
+
+| 行 | 原版 `o_ed.png` | 克隆 `ed249.png` |
+|---|---|---|
+| Basic Settings 标题 | y346..373（墨迹 x 65..353） | y345..370（x 65..349） |
+| Nickname | y460..495 | y459..495 |
+| Type | y582..618（到 987） | y583..618（到 987） |
+| Address | y704..732 | y704..731 |
+| Identity | y825..856 | y824..859 |
+| 后续行 | y937 / y1052 / y1172 / y1288（行距 ~117） | y937 / y1055（行距 ~117） |
+
+克隆多出的两条带（y1127..1156、y1165..1193）经节点定位为
+`[42,1122][1038,1196] JuiceSSH will automatically offer to push the …` —— 即
+**多选身份的说明文字**，只因为这条克隆侧连接挂了 **2 个身份**（`lab-key, keylab`）才出现，
+属于第 238 轮已归因的数据差异，不是缺陷。
+
+**但原版这张图不能用来比对「值内容起点」**：它的 Address 行墨迹只到 x=185（只有标签
+`Address:`，没有值），是**空值状态**的截图。该项需要原版侧现场重采 + dump 才能定，
+本轮不下结论。
+
+### 二、测试 sshd 的宿主密钥固定下来
+
+`tools/_sshd.py` 原来是 `paramiko.RSAKey.generate(2048)` —— 每次重启服务端指纹都变，
+客户端每次都弹「Host Verification（Public key has changed）」，端到端验证每次都要多点一次，
+还会掩盖真正的主机密钥回归。现改为落盘 `.research/_host_rsa`（该目录已 gitignore，不入库）：
+
+```
+已生成并固定宿主密钥: _host_rsa
+SSH 服务端已监听 0.0.0.0:2222（juice/juice）
+```
+
+### 三、端到端地面真值（服务端日志）
+
+按「服务端日志才算数、截图不算数」的原则重跑一次全新连接，日志：
+
+```
++ #2 来自 127.0.0.1:57913
+#2 公钥认证 user='juice' type=ssh-rsa -> 成功
+#2 通道请求 kind=session
+#2 已发样本横幅（418 字节）
+#2 pty 请求 (…, b'linux')
+#2 >>> 客户端请求 shell（会话已建立）
+```
+
+公钥认证成功、PTY（TERM=linux）与 shell 均已建立 —— 同时证明身份/私钥功能可用。
+
+**一条自我更正**：本轮中途我曾据「接受主机密钥后仍再次弹窗、日志里没有认证行」推断
+克隆「没有持久化已接受的主机密钥」。复核 `ssh_service.dart:285-311` 与
+`juice_database.dart:541-554` 后确认该推断**错误**：验证逻辑与 `saveKnownHost`（id==0 时
+按 hostname 查已有行再更新）都是正确的。真实原因是上一轮那次 **ACCEPT 点击落在了对话框
+尚未完成布局的时刻**，对话框一直没关，握手自然没往下走；日志里的
+`!! #1 连接异常: EOFError()` 正是那次连接的结局。这次先 dump 再点、并在点击后复查
+对话框节点数（4 秒后为 0），连接即正常建立。
+
+### 四、终端取色（同一屏）
+
+* 画布 `(540,600)` = `(37,78,89)` —— 与原版 `o_term.png` 相同；
+* 状态栏 `(540,60)` = `(7,54,66)` —— 第 249 轮修的终端页状态栏，**整机重启后仍保持**；
+* 精确 ANSI 命中：ANSI 7 `#EEE8D5` 4058px（= 横幅 `\x1b[1;37m` 那行）、
+  green `#859900` 631px、yellow `#B58900` 2169px、blue `#268BD2` 488px、
+  magenta `#D33682` 932px、cyan `#2AA198` 513px。
+
+标准 Solarized 的 red `#DC322F` 一个像素都没有，一度以为漏渲染 —— 实际是**期望值取错**：
+`terminal_palettes.g.dart` 里 `Solarized Dark` 的 ANSI 1 是 **`0xFFD30102`**，
+green/yellow/blue/magenta/cyan 与 ANSI 0/7 则与标准值一致。以调色板自身为准，渲染正确。
+
+### 五、交付物
+
+本轮只改 `tools/_sshd.py`（开发工具，不参与打包），**APK 未重新构建**，哈希与上一轮相同。
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73019379 字节），SHA-256：
+  `C96ED2F8D624FAEF1E4D66601B3E04537A3E27C97AFCF409354E34A08EBF4B01`。

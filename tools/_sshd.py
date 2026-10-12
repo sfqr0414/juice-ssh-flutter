@@ -45,7 +45,29 @@ BANNER = (
 )
 
 
-HOST_KEY = paramiko.RSAKey.generate(2048)
+# 宿主密钥**固定**下来。早期这里是 `paramiko.RSAKey.generate(2048)`，每次重启
+# 服务端指纹都变，客户端于是每次都弹「Host Verification」（Public key has
+# changed），端到端验证每次都要多点一次、还会掩盖真正的主机密钥相关回归。
+# 现在落盘到 `.research/_host_rsa`（该目录已 gitignore，不入库）。
+_HOST_KEY_PATH = (
+    pathlib.Path(__file__).resolve().parent.parent / '.research' / '_host_rsa'
+)
+
+
+def _load_host_key() -> paramiko.RSAKey:
+    if _HOST_KEY_PATH.exists():
+        try:
+            return paramiko.RSAKey.from_private_key_file(str(_HOST_KEY_PATH))
+        except Exception as exc:  # noqa: BLE001
+            print('!! 宿主密钥载入失败，改为重新生成: %r' % (exc,), flush=True)
+    key = paramiko.RSAKey.generate(2048)
+    _HOST_KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    key.write_private_key_file(str(_HOST_KEY_PATH))
+    print('已生成并固定宿主密钥: %s' % _HOST_KEY_PATH.name, flush=True)
+    return key
+
+
+HOST_KEY = _load_host_key()
 
 # 验证公钥认证用的门钥：`.research/_id_rsa` 里那把私钥对应的公钥。
 # 只有这一把被接受，这样服务端日志能证明客户端用的确实是它。
