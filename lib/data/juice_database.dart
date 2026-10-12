@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'dart:math';
 
 import 'package:path/path.dart' as p;
@@ -42,6 +44,10 @@ class JuiceDatabase {
   static const String fileName = 'juicessh.db';
 
   /// 桌面平台需要先初始化 sqflite 的 FFI 后端。
+  ///
+  /// 移动端**保留**平台通道后端：本轮试过全平台改走 FFI（`databaseFactoryFfi`），
+  /// 开库耗时实测没有变化（11~34ms vs 26~34ms，那 500ms 根本不在这段里），
+  /// 却要动数据安全的关键路径，因此回退。
   static void initializeFfiIfNeeded() {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       sqfliteFfiInit();
@@ -50,8 +56,10 @@ class JuiceDatabase {
   }
 
   static Future<JuiceDatabase> open({String? directory}) async {
-    initializeFfiIfNeeded();
+    final t0 = DateTime.now();
     final baseDir = directory ?? await getDatabasesPath();
+    final t1 = DateTime.now();
+    initializeFfiIfNeeded();
     final path = p.join(baseDir, fileName);
     final db = await openDatabase(
       path,
@@ -101,6 +109,13 @@ class JuiceDatabase {
           await db.execute('DROP TABLE IF EXISTS config');
         }
       },
+    );
+    // 开库耗时分解：定位那段开销具体花在哪一步（`adb logcat -s flutter` 可见）。
+    // 实测结论：`getDatabasesPath()` 这个**首次异步平台调用**会占到 500~800ms，
+    // 而 `openDatabase` 本身只要 11~34ms —— 所以慢的不是 SQLite。
+    debugPrint(
+      '开库分解: 取路径 ${t1.difference(t0).inMilliseconds}ms + '
+      'openDatabase ${DateTime.now().difference(t1).inMilliseconds}ms',
     );
     final instance = JuiceDatabase._(db);
     _instance = instance;

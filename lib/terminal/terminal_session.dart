@@ -332,8 +332,19 @@ class TerminalSessionController extends ChangeNotifier {
 
     switch (tag) {
       case KeyTag.pipe:
-        // 原版对这个键不做键码分发，直接写字符串。
-        terminal.textInput('|');
+      case KeyTag.minus:
+      case KeyTag.slash:
+        // 这三个键面是**可打印字符**（`|` `-` `/`）。原版把它们当按键交给系统分发、
+        // 由终端模拟器翻译成字符；但 xterm 的默认输入处理器里**没有**
+        // `TerminalKey.minus` / `TerminalKey.slash` 分支（整个包里这两个名字只出现在
+        // `qt_keyname.dart` / `input_map.dart` 的映射表里），`keyInput` 会返回 false
+        // 且什么都不发 —— 用户实测"按了 `/` 和 `-` 没有输入任何字符"正是如此。
+        // 所以和 `|` 走同一条路：直接写字符。
+        terminal.textInput(switch (tag) {
+          KeyTag.minus => '-',
+          KeyTag.slash => '/',
+          _ => '|',
+        });
         return;
 
       case KeyTag.ctrl:

@@ -110,12 +110,26 @@ class _TerminalPageState extends State<TerminalPage> {
   /// `Toggle Keyboard` 键维护的软键盘显隐状态（理由见 `_toggleSoftKeyboard`）。
   bool _softKeyboardVisible = false;
 
+  /// 上一次打出的几何诊断行，用来只在数值变化时输出（定位终端顶部偏移用）。
+  String? _lastGeometry;
+
   /// 额外键行是否停在功能键页。
   bool _showingFunctionKeys = false;
 
   /// 是否处于「选择起点 / 终点」的两段式复制流程。
   bool _selectingStart = false;
   bool _selectingEnd = false;
+
+  /// 两段式选择时自己维护的选区锚点。
+  ///
+  /// 本来指望 `TerminalView` 自己的长按拖动扩选，但 xterm 4.0.0 的
+  /// `TerminalView` **没有任何触摸选区手势**（`_onTapDown` 只清选区/弹键盘），
+  /// 所以"拖到起点/终点"必须由本页把像素换算成单元格后调用
+  /// `TerminalController.setSelection()`。
+  CellOffset? _copyAnchor;
+
+  /// 终端控件最近一次布局的逻辑尺寸，用于像素 → 单元格换算。
+  Size? _terminalLayoutSize;
 
   /// 首次进终端时叠在最前面的教程层。
   ///
@@ -167,6 +181,22 @@ class _TerminalPageState extends State<TerminalPage> {
     // 所以放在这里而不是下面的 `acquired.created` 分支里。
     HardwareKeys.handleVolumeKey(_controller.adjustFontSize);
     HardwareKeys.setVolumeKeysActive(true);
+    // 终端几何采样：首帧时终端往往还是 xterm 的默认 80×24（此时服务端横幅
+    // 可能已经写进来了 —— logcat 里 `JuiceSshBell` 就早于首帧两毫秒），
+    // 所以只在首帧采样会看不到 resize 之后的真实行列数。这里再补一次延迟采样。
+    Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      final terminal = _controller.terminal;
+      debugPrint(
+        'JuiceSshGeom(delayed): box=${_terminalLayoutSize?.width.toInt()}x'
+        '${_terminalLayoutSize?.height.round()} '
+        'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
+        'lines=${terminal.buffer.lines.length} '
+        'cursorY=${terminal.buffer.absoluteCursorY} '
+        'fontSize=${_controller.textStyle.fontSize} '
+        'scrollback=${terminal.buffer.lines.length - terminal.viewHeight}',
+      );
+    });
     if (acquired.created) {
       // 建连过程可能弹对话框，等首帧渲染完再开始，避免在 initState 期间弹窗。
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -276,6 +306,57 @@ class _TerminalPageState extends State<TerminalPage> {
     _controller.paste(text);
   }
 
+  /// 终端内边距（逻辑像素）：选择态用 `terminal:margin_selection`（原版行为）。
+  double get _terminalMargin {
+    final settings = SettingsController.instance;
+    final selecting = _selectingStart || _selectingEnd;
+    final value = selecting && settings.terminalMarginSelection > 0
+        ? settings.terminalMarginSelection
+        : settings.terminalMargin;
+    return value.toDouble();
+  }
+
+  /// 把终端控件内的本地像素坐标换算成终端单元格。
+  ///
+  /// 口径与 xterm 一致：可视高度 = 控件高度 - 上下 padding，
+  /// 行高 = 可视高度 / `viewHeight`；贴底显示时可视区第一行是
+  /// `lines.length - viewHeight`。
+  CellOffset? _cellAt(Offset local) {
+    final size = _terminalLayoutSize;
+    if (size == null) return null;
+    final terminal = _controller.terminal;
+    final buffer = terminal.buffer;
+    if (terminal.viewWidth <= 0 || terminal.viewHeight <= 0) return null;
+    final lineCount = buffer.lines.length;
+    if (lineCount <= 0) return null;
+    final margin = _terminalMargin;
+    final cellWidth = (size.width - margin * 2) / terminal.viewWidth;
+    final cellHeight = (size.height - margin * 2) / terminal.viewHeight;
+    if (cellWidth <= 0 || cellHeight <= 0) return null;
+    final firstVisible =
+        lineCount > terminal.viewHeight ? lineCount - terminal.viewHeight : 0;
+    final column = ((local.dx - margin) / cellWidth)
+        .floor()
+        .clamp(0, terminal.viewWidth - 1);
+    final row = (firstVisible + ((local.dy - margin) / cellHeight).floor())
+        .clamp(0, lineCount - 1);
+    return CellOffset(column, row);
+  }
+
+  /// 按当前锚点 + 手指所在单元格刷新选区。
+  ///
+  /// 颜色由主题的 `selection` 决定，已经改成原版的红色（`#FFF44336`）。
+  void _applyCopySelection(CellOffset? cell) {
+    if (cell == null) return;
+    final anchor = _copyAnchor ?? cell;
+    _copyAnchor = anchor;
+    final buffer = _controller.terminal.buffer;
+    _terminalController.setSelection(
+      buffer.createAnchorFromOffset(anchor),
+      buffer.createAnchorFromOffset(cell),
+    );
+  }
+
   /// "Copy (from screen)" 的两段式选择流程。
   ///
   /// 原版先进入选择模式并提示「拖到选区起点」，再提示「拖到选区终点」，
@@ -285,6 +366,7 @@ class _TerminalPageState extends State<TerminalPage> {
       _selectingStart = true;
       _selectingEnd = false;
     });
+    _copyAnchor = null;
     _terminalController.clearSelection();
   }
 
@@ -297,11 +379,16 @@ class _TerminalPageState extends State<TerminalPage> {
       return;
     }
     if (_selectingEnd) {
+      // 先取出文本，再**收起选区**：原版复制完成后即退出选择模式，选区高亮消失
+      // （用户实测"选择完成应该重置选择状态，完成复制"）。
+      final text = _fromScreen;
       setState(() {
         _selectingStart = false;
         _selectingEnd = false;
       });
-      _copyToClipboard(_fromScreen);
+      _terminalController.clearSelection();
+      _copyAnchor = null;
+      _copyToClipboard(text);
     }
   }
 
@@ -310,6 +397,7 @@ class _TerminalPageState extends State<TerminalPage> {
       _selectingStart = false;
       _selectingEnd = false;
     });
+    _copyAnchor = null;
     _terminalController.clearSelection();
   }
 
@@ -810,8 +898,10 @@ class _TerminalPageState extends State<TerminalPage> {
     // 否则用户按提示"拖到选区起点"时只会反复弹出菜单，永远选不中（用户报的第 5 条）。
     if (_selectingStart || _selectingEnd) {
       // 只让已排队的长按回调作废，**保留** `_longPressOrigin`：抬起时要靠它区分
-      // "轻点（推进选区阶段）"与"拖动（交给 TerminalView 扩选）"。
+      // "轻点（推进选区阶段）"与"拖动（设置选区终点）"。
       _longPressToken++;
+      // 按下即定锚点并先选出按下处那个单元格：原版按下时光标处就是红色。
+      _applyCopySelection(_cellAt(event.localPosition));
       return;
     }
     final token = ++_longPressToken;
@@ -829,6 +919,10 @@ class _TerminalPageState extends State<TerminalPage> {
     if ((event.position - origin).distance > _longPressSlop) {
       _cancelLongPress();
     }
+    if (_selectingStart || _selectingEnd) {
+      // 拖动即扩展选区（原版提示的"拖到起点 / 终点"）。
+      _applyCopySelection(_cellAt(event.localPosition));
+    }
   }
 
   void _onTerminalPointerUp(PointerUpEvent event) {
@@ -838,7 +932,8 @@ class _TerminalPageState extends State<TerminalPage> {
     if (selecting) {
       _swipeStart = null;
       _swipeStartAt = null;
-      // 轻点 = 推进两段式选择（起点 → 终点 → 复制）；拖动则交给 `TerminalView` 扩选。
+      // 轻点 = 推进两段式选择（起点 → 终点 → 复制）；拖动则只更新选区终点，
+      // 由用户再点一次（终端或提示条）确认。
       // 此前只有提示条本身可点，终端区域点了毫无反应 —— 这就是"怎么都选不中"的原因。
       if (origin == null || (event.position - origin).distance <= _longPressSlop) {
         _advanceScreenCopy();
@@ -905,25 +1000,57 @@ class _TerminalPageState extends State<TerminalPage> {
     return Stack(
       children: [
         Positioned.fill(
-          child: Listener(
-            // 长按终端弹出上下文菜单，与原版一致（原版是
-            // `registerForContextMenu(terminalView)`）。注意：xterm 内部自带
-            // `LongPressGestureRecognizer`（用于文本选择），外层 GestureDetector
-            // 的长按会在手势竞技场里输给它 —— 所以这里绕开竞技场，用裸指针计时。
-            onPointerDown: _onTerminalPointerDown,
-            onPointerMove: _onTerminalPointerMove,
-            onPointerUp: _onTerminalPointerUp,
-            onPointerCancel: _onTerminalPointerCancel,
-            child: TerminalView(
-              _controller.terminal,
-              controller: _terminalController,
-              theme: _controller.surfaceTheme,
-              textStyle: _controller.textStyle,
-              focusNode: _terminalFocus,
-              padding: EdgeInsets.all(margin.toDouble()),
-              deleteDetection: true,
-              keyboardType: TextInputType.text,
-            ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // 一次性几何诊断：用来定位"终端内容不从顶端开始"（用户报的第 1 条）。
+              // 画布确实从 y=128 起（与原版一致），但第一行内容落在 y=241/274，
+              // 而且即使发过 `ESC c ESC[2J ESC[3J ESC[H` 把光标归位到 (0,0) 之后，
+              // 回显仍在 y=274 —— 所以偏移发生在终端内部，需要行列数/单元格高度
+              // 与控件高度对账才能判定是"缓冲区多了空行"还是"绘制原点被推低"。
+              // 几何诊断：数值变化时打一行（首次构建时终端还是 xterm 的默认
+              // 80×24，resize 发生在布局之后，所以要连着两次都看到才完整）。
+              _terminalLayoutSize =
+                  Size(constraints.maxWidth, constraints.maxHeight);
+              if (constraints.maxHeight > 0) {
+                final terminal = _controller.terminal;
+                if (terminal.viewHeight > 0) {
+                  final line =
+                      'JuiceSshGeom: widget=${constraints.maxWidth.toInt()}x'
+                      '${constraints.maxHeight.round()} '
+                      'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
+                      'cellH=~${(constraints.maxHeight / terminal.viewHeight).toStringAsFixed(2)} '
+                      'bufferLines=${terminal.buffer.lines.length} '
+                      'cursorY=${terminal.buffer.absoluteCursorY} '
+                      'scrollback=${terminal.buffer.lines.length - terminal.viewHeight} '
+                      'fontSize=${_controller.textStyle.fontSize} '
+                      'topInset=${MediaQuery.paddingOf(context).top.toStringAsFixed(1)}';
+                  if (line != _lastGeometry) {
+                    _lastGeometry = line;
+                    debugPrint(line);
+                  }
+                }
+              }
+              return Listener(
+                // 长按终端弹出上下文菜单，与原版一致（原版是
+                // `registerForContextMenu(terminalView)`）。注意：xterm 内部自带
+                // `LongPressGestureRecognizer`（用于文本选择），外层 GestureDetector
+                // 的长按会在手势竞技场里输给它 —— 所以这里绕开竞技场，用裸指针计时。
+                onPointerDown: _onTerminalPointerDown,
+                onPointerMove: _onTerminalPointerMove,
+                onPointerUp: _onTerminalPointerUp,
+                onPointerCancel: _onTerminalPointerCancel,
+                child: TerminalView(
+                  _controller.terminal,
+                  controller: _terminalController,
+                  theme: _controller.surfaceTheme,
+                  textStyle: _controller.textStyle,
+                  focusNode: _terminalFocus,
+                  padding: EdgeInsets.all(margin.toDouble()),
+                  deleteDetection: true,
+                  keyboardType: TextInputType.text,
+                ),
+              );
+            },
           ),
         ),
         if (_controller.state == TerminalSessionState.closed)

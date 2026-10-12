@@ -1,4 +1,6 @@
-import 'package:flutter/widgets.dart';
+import 'dart:async';
+
+import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/app_resources.dart';
@@ -8,42 +10,91 @@ import 'data/juice_database.dart';
 
 /// 应用入口。
 ///
-/// 启动顺序对应原版的初始化链：
-/// 1. 打开 SQLite 数据库 —— 原版由 `ApplicationClass` 建库，
-///    这里保持相同的表名与列名，便于直接读原版的 `juicessh.db`；
-/// 2. 载入 `config` 表里的全部设置项（原版每个设置项都直接读这张表）；
-/// 3. 载入打包进来的资源数组（对应 `res/values/arrays.xml`）；
-/// 4. 载入文案（对应 `res/values/strings.xml` 与 `values-zh`）；
-/// 5. 启动界面。
+/// **首帧不等初始化**。初始化里有一笔固定开销：首次异步平台调用
+/// （`getDatabasesPath()` 或紧随其后的第一个文件系统调用）实测占 500~800ms，
+/// 而 `openDatabase` 本身只要 11~34ms —— 见 `JuiceDatabase.open` 里的埋点。
+/// 以前这些步骤全部串行等在 `runApp` 之前，用户就要对着启动图多等这一整段。
+/// 现在立刻出首帧（纯白，与原生 `launch_background` 同色，切换看不出跳变），
+/// 初始化完成后再切到真正的应用。
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  runApp(const JuiceBootstrap());
+}
 
-  // 启动耗时埋点（`adb logcat -s flutter` 可见）。这四步都在 runApp 之前，
-  // 首帧必须等它们全部完成，所以要能分别量出来才知道该压哪一步。
-  final stopwatch = Stopwatch()..start();
+/// 初始化期间显示的引导壳：加载完成前是纯色屏，完成后是 `JuiceApp`。
+class JuiceBootstrap extends StatefulWidget {
+  const JuiceBootstrap({super.key});
 
-  final database = await JuiceDatabase.open();
-  final databaseMs = stopwatch.elapsedMilliseconds;
+  @override
+  State<JuiceBootstrap> createState() => _JuiceBootstrapState();
+}
 
-  // 三者互不依赖（只有设置需要数据库），并发加载：总耗时取决于最慢的一项，
-  // 而不是三者之和。此前是串行 await，白等了两个资源解析的时间。
-  final loaded = await Future.wait<Object>([
-    SettingsController.load(database),
-    AppResources.load(),
-    JuiceStrings.load(WidgetsBinding.instance.platformDispatcher.locale),
-  ]);
-  final restMs = stopwatch.elapsedMilliseconds - databaseMs;
-  debugPrint(
-    'JuiceSSH 启动耗时: 开库 ${databaseMs}ms + 资源/设置/文案 ${restMs}ms '
-    '= ${stopwatch.elapsedMilliseconds}ms',
-  );
+class _JuiceBootstrapState extends State<JuiceBootstrap> {
+  final Stopwatch _stopwatch = Stopwatch()..start();
 
-  runApp(
-    JuiceApp(
+  JuiceDatabase? _database;
+  SettingsController? _settings;
+  AppResources? _resources;
+  JuiceStrings? _strings;
+
+  @override
+  void initState() {
+    super.initState();
+    // 首帧时刻的埋点：用来量化"首帧等初始化"到底让用户多等了多久。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      debugPrint('JuiceSSH 首帧: main 之后 ${_stopwatch.elapsedMilliseconds}ms');
+    });
+    unawaited(_initialize());
+  }
+
+  /// 与原版的初始化链一致（原版由 `ApplicationClass` 建库）：
+  /// 开库 → 载入 `config` 设置 → 载入打包资源（对应 `res/values/arrays.xml`）
+  /// → 载入文案（对应 `strings.xml` 与 `values-zh`）。
+  Future<void> _initialize() async {
+    final database = await JuiceDatabase.open();
+    final databaseMs = _stopwatch.elapsedMilliseconds;
+
+    // 三者互不依赖（只有设置需要数据库），并发加载：总耗时取最慢的一项，
+    // 而不是三者之和。
+    final loaded = await Future.wait<Object>([
+      SettingsController.load(database),
+      AppResources.load(),
+      JuiceStrings.load(WidgetsBinding.instance.platformDispatcher.locale),
+    ]);
+
+    debugPrint(
+      'JuiceSSH 启动耗时: 开库 ${databaseMs}ms + 资源/设置/文案 '
+      '${_stopwatch.elapsedMilliseconds - databaseMs}ms '
+      '= ${_stopwatch.elapsedMilliseconds}ms',
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _database = database;
+      _settings = loaded[0] as SettingsController;
+      _resources = loaded[1] as AppResources;
+      _strings = loaded[2] as JuiceStrings;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final database = _database;
+    final settings = _settings;
+    final resources = _resources;
+    final strings = _strings;
+    if (database == null ||
+        settings == null ||
+        resources == null ||
+        strings == null) {
+      // 与 `launch_background.xml` 的 `@android:color/white` 同色。
+      return const ColoredBox(color: Color(0xFFFFFFFF));
+    }
+    return JuiceApp(
       database: database,
-      settings: loaded[0] as SettingsController,
-      resources: loaded[1] as AppResources,
-      strings: loaded[2] as JuiceStrings,
-    ),
-  );
+      settings: settings,
+      resources: resources,
+      strings: strings,
+    );
+  }
 }
