@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// 正式发布签名（第 325 轮）：数值取自 android/key.properties，
+// 该文件与 .jks 都不进 git。文件缺失时回退 debug 签名，
+// 保证任何没有发布密钥的机器依然能构建。
+val juiceKeyProps = Properties().apply {
+    val juiceKeyFile = rootProject.file("key.properties")
+    if (juiceKeyFile.exists()) juiceKeyFile.inputStream().use { load(it) }
+}
+val juiceHasReleaseKey = juiceKeyProps.getProperty("storeFile") != null
 
 android {
     namespace = "com.juicessh.juice_ssh_flutter"
@@ -35,11 +46,21 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            if (juiceHasReleaseKey) {
+                storeFile = file(juiceKeyProps.getProperty("storeFile"))
+                storePassword = juiceKeyProps.getProperty("storePassword")
+                keyAlias = juiceKeyProps.getProperty("keyAlias")
+                keyPassword = juiceKeyProps.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 有 release keystore 就用正式签名，否则回退 debug（见文件顶部说明）。
+            signingConfig = if (juiceHasReleaseKey) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 
