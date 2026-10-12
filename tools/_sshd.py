@@ -321,6 +321,10 @@ def _session_loop(channel, tag: str) -> None:
             b'\x1b[?1049h\x1b[2J\x1b[H'
             b'ALT-SCREEN MODE (simulates vi)\r\n'
             b'line2: red green yellow blue\r\n'
+            # 判别实验（第 268 轮）：备用屏里再写一段**带 SGR 彩色**的文字。
+            # 彩色能显示 ⇒ 问题在"默认前景色"（默认色单元格与画布同色）；
+            # 彩色也不显示 ⇒ 问题在备用屏绘制本身。
+            b'\x1b[31mZZREDZZ\x1b[0m  \x1b[32mZZGREENZZ\x1b[0m\r\n'
         )
         channel.sendall(b'\x1b[24;1H-- ALT --')
         print('%s 已进备用屏(1049h)，接着发送 DA1 查询 ESC[c' % tag, flush=True)
