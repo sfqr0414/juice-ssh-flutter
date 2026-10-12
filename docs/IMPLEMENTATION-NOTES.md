@@ -8898,3 +8898,29 @@ xterm 的 `simulateScroll` 只作用于**备用屏**，救不了主屏，所以�
    占位，不是 bug）。
 
 本轮无代码改动、无新 APK（`dist/` 仍是第 275 轮那四份）。
+## 第 277 轮：交付物验证（版本 / ABI 归属 / 摘要）
+
+用 `build-tools/36.1.0/aapt.exe dump badging` 对 `dist/` 里四份包逐一取证：
+
+| 文件 | 字节 | versionName | versionCode | minSdk/targetSdk | native-code | SHA-256(前16) |
+| --- | --- | --- | --- | --- | --- | --- |
+| `juice-ssh-flutter-3.2.2.apk`（fat） | 73,068,531 | 3.2.2 | 200 | 26 / 29 | arm64-v8a, armeabi-v7a, x86_64 | `E31023B980AA0EB1` |
+| `juice-ssh-flutter-3.2.2-arm64-v8a.apk` | 30,918,184 | 3.2.2 | 2200 | 26 / 29 | arm64-v8a | `E10E6747342AA4B1` |
+| `juice-ssh-flutter-3.2.2-armeabi-v7a.apk` | 28,654,962 | 3.2.2 | 1200 | 26 / 29 | armeabi-v7a | `FB75D0F2E9481B22` |
+| `juice-ssh-flutter-3.2.2-x86_64.apk` | 32,369,913 | 3.2.2 | 4200 | 26 / 29 | x86_64 | `A9A6E21992CA76D0` |
+
+结论：**fat 含全部 3 个 ABI**，三个拆分包各自**恰好 1 个 ABI 且与文件名一致**，
+versionCode 用的是经典的 ABI 递增方案（200 / 1200 / 2200 / 4200），四份都能正常安装
+（x86_64 那份在本机 AVD API 36 上已多次装机验证）。
+
+两点如实记录：
+
+1. 本轮脚本第一次输出 `与文件名一致=False`、`fat 含 4 个 ABI=False` —— 这是**脚本自身的
+   错**，不是交付问题：`aapt` 打印的 ABI 带单引号（`'arm64-v8a'`），字符串比较因此不等；
+   另外本项目只有 **3** 个 ABI 拆分包（arm64-v8a / armeabi-v7a / x86_64），我却按"4 个"去
+   断言。修正口径后即为上表的结论。
+2. `targetSdkVersion=29` 是从工程骨架沿用至今的，与 2016 年原版所处的年代一致；在
+   API 36 的模拟器与用户真机上都能安装运行，本轮**不改**它（改为高 targetSdk 会引入
+   分区存储、通知权限等一批行为变化，属于独立议题，需要单独评估后再动）。
+
+本轮无代码改动、无新 APK。
