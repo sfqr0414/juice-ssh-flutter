@@ -9731,3 +9731,39 @@ Flutter 没有把这一行当成"输入框以外的区域"。
 
 * 若要补 UI 端到端测试，需新建 `integration_test/`（并加 `integration_test` 依赖）；
 * 本轮无代码改动、无新交付物，`dist/` 未变。
+## 第 320-321 轮：交付物签名核验 —— **release 包用的是 debug 签名**
+
+核验 `dist/` 的签名时发现 `android/app/build.gradle.kts` 里 release 构建类型写的是：
+
+```kotlin
+release {
+    signingConfig = signingConfigs.getByName("debug")
+}
+```
+
+也就是说**四份交付包都是 debug 签名**。（`apksigner verify --print-certs` 那次我的过滤表达式
+没匹配到输出，属脚本问题；构建配置这一行才是决定性证据。）
+
+### 影响（必须让用户知道）
+
+| 影响 | 说明 |
+| --- | --- |
+| 能装 | debug 签名的 release 包可正常安装，自用没问题 |
+| 不能上架 | 应用商店一律拒收 debug 签名的包 |
+| 换机器不能覆盖升级 | debug keystore 是**每台机器一份**；在别的电脑重新构建后签名不同，`install -r` 失败，须先卸载 |
+| 可能装不上 | 若手机上已装过**别的签名**的同名包，会报签名冲突，需先卸载旧包 |
+
+### 待用户决定
+
+1. **生成正式发布签名**（推荐）：建 `android/app/juice-release.jks`，在 `build.gradle.kts` 接上，
+   口令与别名写进 `docs/`，且确保 `.jks` 与口令**不进 git**；然后重出四份包 ——
+   签名一致、可长期覆盖升级、也能上架；
+2. **维持现状**：自用足够，但上述三条限制继续存在。
+
+用户未答复前，**不擅自改签名**：生成 keystore 会引入一个必须长期保管的密钥实体，
+属于用户该拍板的事（放哪儿、口令怎么存、要不要进 CI）。
+
+### 待办
+
+* 签名决策待用户答复；
+* 本轮无代码改动、无新交付物，`dist/` 未变。
