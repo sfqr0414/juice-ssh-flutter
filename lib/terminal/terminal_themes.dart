@@ -99,7 +99,10 @@ class JuiceTerminalThemes {
       // 选中区高亮 = 原版 `@color/copy_instructions_start_selection_background`
       // = `#F44336`（红）。此前这里是前景色 30% 透明度，暗色主题下几乎看不出来 ——
       // 用户实测"用'复制从屏幕'选开头和结尾时没有颜色区分提示反馈"。
-      selection: const Color(0xFFF44336),
+      // 半透明红作**底色**：用户实测"复制（从屏幕）选中时红色把文字全部覆盖，
+      // 看不见内容" —— 之前是不透明 `0xFFF44336`，选区里的字直接被盖掉。
+      // 40% 透明度让被选文字仍可读（原版也是底色高亮而不是蒙层）。
+      selection: const Color(0x66F44336),
       foreground: foreground,
       background: surfaceOverlay <= 0
           ? background
