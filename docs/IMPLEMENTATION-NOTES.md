@@ -9107,3 +9107,49 @@ final leaving = offAt > onAt;   // 最后出现的是退出序列
   `7532E7FA511143004F50B442CCBC561E3D3585D00CA7D222A88DD2DF7D00052D`。
 - `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
   `4A5CF24949574189A4B7D6599DF18141B38B13CF15F06A689F51D1B192D6E8B6`。
+## 第 284-285 轮：交互式拖动禁用的**行为层**验证通过 + 观测日志收口
+
+### 第 284 轮：用 `ScrollPosition` 直接量做 A/B，结论成立
+
+第 279/280 轮两次用"整屏像素差异"当判据都失败（一次实验无效、一次两组 2.27% 无区别），
+所以这一轮改成读**滚动位置本身**：在 `_onTerminalPointerMove` 里打印
+`pixels` 与 `maxScrollExtent`。两组流程完全相同（连上主屏测试服 → 按 BACK 收输入法 →
+`A`+`Enter` 交替灌 20 行非空白内容让游标贴底 → 收起键位条 → 转横屏），
+唯一差别是实验组先注入 `ESC[?1000h`。
+
+| 组 | 采样数 | `pixels` min→max | `maxScrollExtent` | 拖动改变偏移 |
+| --- | --- | --- | --- | --- |
+| control（不注入） | 7 | **140.4 → 148.6** | 148.6 | **True** |
+| treat（注入 `ESC[?1000h`） | 7 | **148.6 → 148.6** | 148.6 | **False** |
+
+两组几何完全一致（`cols=105 rows=17 lines=26 cursorY=25 viewport=293.4 max=148.6`），
+所以差别只能来自注入的私有模式。结论：**交互式程序开启鼠标上报（或切备用屏）后，
+手指拖动不再能滚动终端** —— 这正是用户第 1 条要求的那个行为。
+对照组的 True 同时说明普通 shell 的回滚滚动**没有被误伤**。
+
+这条结论串起五轮工作：第 275 轮实现识别与禁用 → 第 278 轮在设备上复现"能滑" →
+第 281 轮发现并修掉"私有模式跨数据块送达、扫描永不命中"的真实缺陷 →
+第 283 轮修掉"退出序列被漏掉、标志永不复位"的锐边 → 第 284 轮拿到 True/False 对照。
+
+### 第 285 轮：观测日志收进 `assert`
+
+`JuiceSshScroll` 原先每次指针移动都会 `debugPrint`，release 包也会刷 logcat。
+改成用 `assert(() { … }())` 包住（断言在 release 中被整段剥离），重建安装后实测：
+
+**release 包里的观测日志行数 = 0** ✓
+
+顺带说明：`JuiceSshInteractive`（第 280 轮加的私有模式日志）**没有**收进 assert，
+它只在整个会话里遇到私有模式时打印一次，量极小且有排查价值，暂时保留。
+
+### 交付物（第 285 轮重出，四份均含上述全部修复且无日志噪音）
+
+四份 APK，SHA-256：
+
+- `dist/juice-ssh-flutter-3.2.2.apk`（73068531 字节），SHA-256：
+  `D88797AE225A95DD5ACEFED67B3606EBF935D635CD50A898EC0EDDACA2ECE47E`。
+- `dist/juice-ssh-flutter-3.2.2-arm64-v8a.apk`（30918184 字节），SHA-256：
+  `80579B3F26070A64F2B887FB01140D2EBE52E078D32557759998E333C577A645`。
+- `dist/juice-ssh-flutter-3.2.2-armeabi-v7a.apk`（28654962 字节），SHA-256：
+  `52A83ABAD9584EF7EB07B4C12C6104A1C0718D77663044C20698624C622F13A4`。
+- `dist/juice-ssh-flutter-3.2.2-x86_64.apk`（32369913 字节），SHA-256：
+  `9EB2A130B04C7D4148987BCA0BC83D9493BDAC376E4C15C81329A1C9BC26EBAC`。
