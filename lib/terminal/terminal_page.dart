@@ -1404,7 +1404,7 @@ class _TerminalPageState extends State<TerminalPage> {
                   removeBottom: true,
                   removeLeft: true,
                   removeRight: true,
-                  child: ValueListenableBuilder<bool>(
+                  child: ListenableBuilder(
                     // 仅在**当前真的处于备用屏**时剥夺终端原生触摸拖动：判据取 xterm 的
                     // 实时状态 `terminal.isUsingAltBuffer`，而不是"有交互式程序在跑"这个
                     // 会误判/滞留的启发式标志 —— 后者一旦为真，普通 shell 就彻底滑不动
@@ -1412,11 +1412,11 @@ class _TerminalPageState extends State<TerminalPage> {
                     // 重建由"备用屏标志 + 每次终端输出"共同驱动：前者在进出序列上翻转，
                     // 后者（`outputTick`）保证 htop 这类持续重绘时配置不会过期 —— 否则
                     // 会出现"进了交互程序仍然能滑"（用户实测）。只在终端这一层生效。
-                    valueListenable: Listenable.merge(<Listenable>[
+                    listenable: Listenable.merge(<Listenable>[
                       _controller.interactiveProgram,
                       _controller.outputTick,
                     ]),
-                    builder: (context, _, child) => ScrollConfiguration(
+                    builder: (context, child) => ScrollConfiguration(
                       behavior: ScrollConfiguration.of(context).copyWith(
                         dragDevices: _controller.terminal.isUsingAltBuffer
                             ? const {}
