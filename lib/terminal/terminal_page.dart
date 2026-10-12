@@ -1153,11 +1153,17 @@ class _TerminalPageState extends State<TerminalPage> {
     // 做判据、两次都不成立（第 279 轮实验无效、第 280 轮两组 2.27% 无区别），
     // 这里改成读 `ScrollPosition` 本身 —— 交互式程序在跑时手指拖动被禁掉，
     // `pixels` 应始终等于 `maxScrollExtent`；普通 shell 拖动时会小于它。
-    if (_terminalScroll.hasClients) {
-      final pos = _terminalScroll.position;
-      debugPrint('JuiceSshScroll: pixels=${pos.pixels.toStringAsFixed(1)} '
-          'max=${pos.maxScrollExtent.toStringAsFixed(1)}');
-    }
+    //
+    // 用 `assert` 包住：断言在 release 包中被整段剥离，交付的 APK 不会因为
+    // 每次指针移动都打印而刷爆 logcat；调试/性能分析时仍可用。
+    assert(() {
+      if (_terminalScroll.hasClients) {
+        final pos = _terminalScroll.position;
+        debugPrint('JuiceSshScroll: pixels=${pos.pixels.toStringAsFixed(1)} '
+            'max=${pos.maxScrollExtent.toStringAsFixed(1)}');
+      }
+      return true;
+    }());
   }
 
   void _onTerminalPointerUp(PointerUpEvent event) {
