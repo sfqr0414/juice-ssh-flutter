@@ -1187,15 +1187,27 @@ class _TerminalPageState extends State<TerminalPage> {
           final lines = (-_wheelRemainder / cellHeight).truncate();
           if (lines != 0) {
             _wheelRemainder += lines * cellHeight;
-            final cell = _cellAt(event.localPosition);
-            final column = (cell?.column ?? 0) + 1;
-            final row = (cell?.row ?? 0) + 1;
+            // 列/行取**手指所在可视单元格**（1 基）。原版是从 MotionEvent 的屏幕坐标
+            // 换算的，同为可视行；这里不复用 `_cellAt`，因为那个返回的是回滚缓冲里的
+            // 绝对行号，而鼠标模式下本就不滚回滚缓冲，屏幕行才是远端要的坐标。
+            final margin = _terminalMargin;
+            final cellWidth = (size.width - margin * 2) / terminal.viewWidth;
+            final column = cellWidth > 0
+                ? ((event.localPosition.dx - margin) / cellWidth)
+                        .floor()
+                        .clamp(0, terminal.viewWidth - 1) +
+                    1
+                : 1;
+            final row = ((event.localPosition.dy - margin) / cellHeight)
+                    .floor()
+                    .clamp(0, terminal.viewHeight - 1) +
+                1;
             final code = lines > 0 ? 65 : 64;
             final seq = StringBuffer()
               ..write('\u001b[M')
               ..writeCharCode(32 + code)
-              ..writeCharCode(32 + column.clamp(1, 223))
-              ..writeCharCode(32 + row.clamp(1, 223));
+              ..writeCharCode(32 + column)
+              ..writeCharCode(32 + row);
             final bytes = seq.toString().codeUnits;
             for (var i = 0; i < lines.abs(); i++) {
               _controller.sendBytes(bytes);
