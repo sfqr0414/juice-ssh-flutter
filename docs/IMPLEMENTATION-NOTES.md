@@ -10124,3 +10124,101 @@ view.post(mFlingRunner);                                                    // �
   （`SettingsController.instance.setTerminalTutorialSeen(true)`）绕开该覆盖层，探针从此能看到真实指针事件。
 - 测试服务器新增 `--mouse-tracking`（发 `?1002h`），用于日后核验滚轮转发。
 
+## 第 347 轮：README 归档到第一次提交、全库 @brief 注释、GitHub Actions 发布流水线
+
+本轮不加功能，只把交付形态做齐：README 从第一次提交起就存在、源码逐类逐函数带 `@brief`、
+一条能产出全部平台 release APK 的 CI。三件事都用可机械复核的方式落地，判据写在下面。
+
+### 一、README 写进第一次提交
+
+需求是"README.md 从第一次提交起就存在，且其后的所有提交都保留"。做法是**改写历史**而不是新增提交：
+把最终 README 覆盖到根提交 `2294f57` 上 `git commit --amend --no-edit`（用 `GIT_COMMITTER_*`
+保持原始作者与提交时间），再 `git rebase --committer-date-is-author-date --onto <新根> <旧根> main`
+平移其后的 96 个提交。
+
+为什么安全（事先取证，不是事后庆幸）：
+
+- `git log --oneline --all -- README.md` 只有一个提交 `2294f57`；
+- `git diff 2294f57 HEAD -- README.md` 为空 —— 此后无人再碰这个文件，
+  所以"覆盖 + amend + rebase"不可能与任何后续改动冲突。
+
+判据（改写后必须同时成立）：提交条数仍为 97；除 `README.md` 外新老 HEAD 无差异；
+**全部提交里 `README.md` 的 blob 只有 1 个**（即从第一次提交起每棵树都带同一份 README）；
+工作区内容与改写前一致。回滚备份分支 `backup/pre-readme-rewrite`。
+
+README 内容共 8 节 302 行：项目简介 / 项目组织架构（目录树 + 各目录职责）/ 构建与运行
+（本机工具链实测版本）/ 发布与持续集成 / 实现内容 / 复刻比对（逐项与原版对照并给出处）/
+功能清单（已实现 + 未实现，含"未验证"分级）/ 资料出处。
+
+### 二、全库 @brief 注释
+
+范围与口径：
+
+- 范围：`lib/` 下 44 个手写 Dart 文件（`lib/data/generated/terminal_palettes.g.dart` 是脚本生成物，明确不动）；
+- 覆盖：全部 **162 个类/枚举/mixin**、全部 **116 个构造函数**、全部具名函数与方法
+  （含私有成员、`build`、生命周期、getter/setter、局部具名函数），以及常用变量
+  （`static const`、State 字段、控制器、`ValueNotifier`、`StreamSubscription`）；
+- 写法：首行统一 `/// @brief 一句话`，原有解释性注释原样保留在下方，中间以一行 `///` 分隔；
+- 版式：行宽 ≤80 显示列（中文按 2 计）；注释块紧贴声明，中间不留空行。
+
+**硬约束：只增删 `///` 行，代码一字节不改。** 复核方式：把两侧所有 `//`、`///` 行剔除后逐行比对，
+44/44 文件一致、0 处代码差异；另用 `git diff -U0 -- lib/` 过滤掉 `///` 行后应无输出。
+
+明确跳过（口径统一，写在这里以免下轮重复讨论）：
+
+- **单行枚举** `enum X { a, b, c }` 的各个值：逐值加注释必须把该行拆成多行（改代码字符），
+  与"代码一字节不改"直接冲突，故全库 6 处（`lib/ssh/ssh_service.dart` 的 `SshFailureKind`、
+  `lib/screens/` 的 5 个 `_XxxMenuAction`）一律跳过；
+- 函数参数与局部变量：不属于"类/函数/常用变量"的口径；
+- 生成文件 `lib/data/generated/terminal_palettes.g.dart`；
+- `lib/screens/main_screen.dart:57` 那个不附着任何声明的孤立说明块（保留为普通说明，不标 `@brief`）。
+
+自查结果：`@brief` 共 **1729** 条；超过 80 列 **0** 行；注释块与声明之间夹空行 **0** 处；
+同一块出现多个 `@brief` **0** 处；块首行缺 `@brief` **0** 处。
+
+质量评审（两轮独立只读评审）抓到并修掉 3 处真实矛盾：
+
+1. `lib/screens/connections_screen.dart` 里 `_showGroupContextMenu` 的说明被误写成 `_openGroups` 的；
+2. `lib/terminal/terminal_session.dart` 的"交互式程序判定"仍写着鼠标上报模式 `1000/1002/1003`，
+   而代码只认备用屏 `1049|47`（第 38 轮回归的结论）；
+3. 同文件类注释仍断言副标题按 `用户名@地址:端口` + `connected_x_times` 拼装，
+   而实测（第 70 轮）是**关联身份的显示名**。
+
+另有 1 条评审为误报（逐条核实后不改）。同时清掉 8 处"`@brief` 与紧随其后的原句重复"的冗余行，
+并把 12 行超过 80 列的 `@brief` 按自然断点无损折成两行。
+
+### 三、GitHub Actions 发布流水线
+
+`.github/workflows/release.yml`：触发器 `workflow_dispatch`（可填版本号）+ `push: tags: ['v*']`；
+`runs-on: ubuntu-24.04`；JDK 17（temurin）+ Android SDK（自动接受 licenses，补装
+`platforms;android-36` 与 `build-tools;36.0.0`，失败降级为 warning）+ `subosito/flutter-action@v2`
+（`channel: stable` 与 `flutter-version: 3.47.7` 同时给，该组合见于 action 官方 README 示例，已核对一手文档）；
+`flutter analyze` 只作提示（`continue-on-error: true`），`flutter test` 作硬门；
+`flutter build apk --release --split-per-abi` 之后再出一个通用包；产物收集为
+`juice-ssh-flutter-<version>-{arm64-v8a,armeabi-v7a,x86_64}.apk` 与 `juice-ssh-flutter-<version>.apk`，
+附 `SHA256SUMS.txt`，上传 artifact（保留 30 天），tag 触发时用 `softprops/action-gh-release@v2` 建 Release。
+
+签名：`android/app/build.gradle.kts` 在缺少 `android/key.properties` 时**回落到 debug 签名**，
+因此 CI 不需要任何 Secret 也能产出可安装的 APK；若配了 4 个 keystore Secret 就走 release 签名
+（`secrets` 上下文不能用在 step 级 `if`，故先映射到 job 级 `env` 再判断）。
+
+本地复核：YAML 可解析（PyYAML）且触发器/permissions/concurrency/job/env/steps 逐项打印核对；
+命令与产物名逐个对照本机真实构建输出 —— `build/app/outputs/flutter-apk/` 里
+`app-arm64-v8a-release.apk`、`app-armeabi-v7a-release.apk`、`app-x86_64-release.apk`、`app-release.apk`
+与 workflow 的 `cp` 源名逐字相同，且四个文件确实并存（先分 ABI 后通用包不会互相覆盖）。
+
+### 本轮验证
+
+- `flutter analyze` → **No issues found!**（退出码 0，5.7s）
+- `flutter test` → **All tests passed! +22**（退出码 0）
+- `lib/` 代码行与改动前逐行一致（44/44 文件，0 处差异）
+- 未跟踪残留文件：无
+- 远端可达性：`git push --dry-run origin main` 退出码 0（凭据助手 `manager` 可用，远端为空仓库）
+
+### 未做 / 边界
+
+- CI 未在 GitHub 上真实跑过一次（推送后才会触发）；
+- 本轮只动注释、README 与 CI，不涉及运行时行为，故未做真机复核；
+- 单行枚举的枚举值注释按上面的口径跳过；
+- 部分私有小部件类的**实例字段**尚无 `@brief`（State 字段、控制器、`ValueNotifier`、
+  `static const` 这类"常用变量"已覆盖）。

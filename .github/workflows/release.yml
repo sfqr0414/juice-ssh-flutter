@@ -1,0 +1,202 @@
+# 发布流水线：构建并发布**所有目标平台**的 release APK。
+#
+# 触发时机：
+#   1) 手动 —— Actions 页面 Run workflow（可选填 version 覆盖版本号）；
+#   2) 推送 tag —— 形如 `v1.0.0`，此时版本号自动取 tag 名去掉前缀 v。
+#
+# 产物（命名与本地 `dist/release/` 保持一致）：
+#   juice-ssh-flutter-<version>-arm64-v8a.apk
+#   juice-ssh-flutter-<version>-armeabi-v7a.apk
+#   juice-ssh-flutter-<version>-x86_64.apk
+#   juice-ssh-flutter-<version>.apk            ← 通用（fat）包
+#   SHA256SUMS.txt
+#
+# 签名说明：`android/app/build.gradle.kts` 在缺少 `android/key.properties` 时会自动
+# 回退到 debug 签名（见该文件顶部注释），所以**不配任何 Secret 也能顺利产出 APK**。
+# 若要产出正式签名的包，在仓库 Settings → Secrets and variables → Actions 里配置：
+#   ANDROID_KEYSTORE_BASE64     —— `base64 -w0 android/juice-release.jks` 的结果
+#   ANDROID_KEYSTORE_PASSWORD   —— storePassword
+#   ANDROID_KEY_ALIAS           —— keyAlias（本仓库本地用 juice）
+#   ANDROID_KEY_PASSWORD        —— keyPassword
+# 配好之后流水线会自动写出 key.properties 并使用发布密钥签名。
+name: Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 覆盖版本号（留空则取 pubspec.yaml 的 version；tag 触发时取 tag 名）
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+# 创建 GitHub Release 需要写权限，用默认的 GITHUB_TOKEN 即可。
+permissions:
+  contents: write
+
+# 同一个分支/tag 上重复触发时排队而不是互相抢 Gradle 缓存；
+# 不用 cancel-in-progress，避免把正在创建 Release 的任务砍掉。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # 与本仓库开发环境一致的 Flutter（channel stable，见 pubspec.yaml 的 sdk 约束）。
+  # 如果想始终跟随最新 stable：删掉下面的 FLUTTER_VERSION，
+  # 并把 flutter-action 的 `flutter-version` 一行去掉。
+  FLUTTER_CHANNEL: stable
+  FLUTTER_VERSION: 3.47.7
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    name: 构建全部 release APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    # 发布签名从 Secrets 注入（没配置就是空字符串）。
+    # 注意：**`secrets` 上下文在 step 级 `if` 里不可用**（官方只提供 github/needs/strategy/
+    # matrix/job/runner/env/vars/steps/inputs），所以先映射成 job 级 env，再用
+    # `if: env.KEYSTORE_BASE64 != ''` 判断 —— 这是文档里可靠的写法。
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: 打印工具链版本
+        run: |
+          flutter --version
+          java -version
+          echo "ANDROID_HOME=${ANDROID_HOME:-<未设置>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<未设置>}"
+
+      # ubuntu-24.04 的 runner 映像自带 Android SDK（cmdline-tools / platform-tools /
+      # 多套 platforms 与 build-tools）。这里只做三件事：接受许可、尽力补装本项目
+      # 需要的组件、把 SDK 路径告诉 Flutter。
+      #
+      # 组件安装刻意写成**尽力而为**：AGP 在许可已接受时会自行下载缺失的 platform /
+      # build-tools / NDK，所以不必让流水线因为“某个版本号在这一天的镜像里不存在”而红。
+      - name: 准备 Android SDK
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+            "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0" \
+              > /dev/null 2>&1 || echo "::warning::部分 SDK 组件未装上，交给 AGP 自动下载"
+          else
+            echo "::warning::未找到 sdkmanager，直接使用映像自带 SDK"
+          fi
+          flutter config --android-sdk "$SDK"
+
+      - name: 解析版本号
+        id: version
+        # 用 env 传递 workflow_dispatch 的输入，避免把用户输入直接拼进 shell 脚本。
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${INPUT_VERSION:-}" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "本次发布版本号：$VERSION"
+
+      - name: 取依赖
+        run: flutter pub get
+
+      - name: 静态检查
+        # 只作为提示：不同 Flutter 小版本的新 lint 不该拦住出包（默认版本已与本仓库
+        # 开发环境对齐，见文件头的 FLUTTER_VERSION）。
+        continue-on-error: true
+        run: flutter analyze
+
+      - name: 单元测试
+        # 依赖外部 SSH 夹具的用例在没有夹具时会自动跳过（见 test/ssh_connect_probe_test.dart）。
+        run: flutter test
+
+      - name: 写入发布签名（仅当配置了 Secrets）
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 -d > android/juice-release.jks
+          {
+            echo "storeFile=juice-release.jks"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > android/key.properties
+          echo "已写入发布签名配置"
+
+      - name: 构建分 ABI 的 release APK
+        run: |
+          flutter build apk --release --split-per-abi \
+            --build-name="${{ steps.version.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: 构建通用（fat）release APK
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.version.outputs.version }}" \
+            --build-number="${{ github.run_number }}"
+
+      - name: 汇总产物并计算校验和
+        id: collect
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          OUT=dist-release
+          SRC=build/app/outputs/flutter-apk
+          mkdir -p "$OUT"
+          cp "$SRC/app-arm64-v8a-release.apk"   "$OUT/juice-ssh-flutter-$VERSION-arm64-v8a.apk"
+          cp "$SRC/app-armeabi-v7a-release.apk" "$OUT/juice-ssh-flutter-$VERSION-armeabi-v7a.apk"
+          cp "$SRC/app-x86_64-release.apk"      "$OUT/juice-ssh-flutter-$VERSION-x86_64.apk"
+          cp "$SRC/app-release.apk"             "$OUT/juice-ssh-flutter-$VERSION.apk"
+          (cd "$OUT" && sha256sum *.apk | tee SHA256SUMS.txt)
+          ls -l "$OUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: 上传产物（任何触发方式都留档）
+        uses: actions/upload-artifact@v4
+        with:
+          name: juice-ssh-flutter-${{ steps.version.outputs.version }}-apk
+          path: dist-release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 发布到 Releases（仅 tag 触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
