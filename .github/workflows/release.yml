@@ -1,8 +1,9 @@
 # 发布流水线：构建并发布**所有目标平台**的 release APK。
 #
 # 触发时机：
-#   1) 手动 —— Actions 页面 Run workflow（可选填 version 覆盖版本号）；
-#   2) 推送 tag —— 形如 `v1.0.0`，此时版本号自动取 tag 名去掉前缀 v。
+#   1) 手动 —— Actions 页面 Run workflow（可选填 version 覆盖版本号；
+#      勾选 publish 则本次也创建 GitHub Release，不带 tag 时用 v<版本号> 作 tag）；
+#   2) 推送 tag —— 形如 `v1.0.0`，此时版本号自动取 tag 名去掉前缀 v，并自动创建 Release。
 #
 # 产物（命名与本地 `dist/release/` 保持一致）：
 #   juice-ssh-flutter-<version>-arm64-v8a.apk
@@ -10,6 +11,10 @@
 #   juice-ssh-flutter-<version>-x86_64.apk
 #   juice-ssh-flutter-<version>.apk            ← 通用（fat）包
 #   SHA256SUMS.txt
+#
+# 上传方式：**逐个文件原样上传**（`archive: false`），不做 zip 打包 —— 在运行页的
+# Artifacts 里每个 APK 都是一个可直接下载的独立文件；Release 附件同样是独立文件。
+# 运行摘要里还会列出文件名、大小与 SHA-256，不下载也能核对。
 #
 # 签名说明：`android/app/build.gradle.kts` 在缺少 `android/key.properties` 时会自动
 # 回退到 debug 签名（见该文件顶部注释），所以**不配任何 Secret 也能顺利产出 APK**。
@@ -28,6 +33,11 @@ on:
         description: 覆盖版本号（留空则取 pubspec.yaml 的 version；tag 触发时取 tag 名）
         required: false
         type: string
+      publish:
+        description: 本次也创建 GitHub Release（用 v<版本号> 作 tag；该 tag 已存在则挂到它上面）
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -68,12 +78,12 @@ jobs:
 
     steps:
       - name: 检出源码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: 安装 JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
@@ -162,12 +172,15 @@ jobs:
           flutter build apk --release --split-per-abi \
             --build-name="${{ steps.version.outputs.version }}" \
             --build-number="${{ github.run_number }}"
+          # 分 ABI 包与通用包是不同文件名，互不覆盖；这里先摆出来便于对照日志。
+          ls -l build/app/outputs/flutter-apk/*.apk
 
       - name: 构建通用（fat）release APK
         run: |
           flutter build apk --release \
             --build-name="${{ steps.version.outputs.version }}" \
             --build-number="${{ github.run_number }}"
+          ls -l build/app/outputs/flutter-apk/*.apk
 
       - name: 汇总产物并计算校验和
         id: collect
@@ -183,20 +196,75 @@ jobs:
           cp "$SRC/app-release.apk"             "$OUT/juice-ssh-flutter-$VERSION.apk"
           (cd "$OUT" && sha256sum *.apk | tee SHA256SUMS.txt)
           ls -l "$OUT"
+          # 兜底断言：必须是四个 APK，少一个就让这一步红，而不是悄悄上传一个。
+          COUNT="$(ls -1 "$OUT"/*.apk | wc -l)"
+          if [ "$COUNT" -ne 4 ]; then
+            echo "::error::期望 4 个 APK，实际 $COUNT 个"
+            exit 1
+          fi
+          # 清单写进运行摘要：不下载也能看到四个包的名字、大小与校验和。
+          {
+            echo "### 本次产物（$VERSION）"
+            echo
+            echo "| 文件 | 大小 | SHA-256 |"
+            echo "| --- | ---: | --- |"
+            while read -r sum name; do
+              printf '| `%s` | %s | `%s` |\n' "$name" "$(du -h "$OUT/$name" | cut -f1)" "$sum"
+            done < "$OUT/SHA256SUMS.txt"
+            echo
+            echo "> Artifacts 与 Release 附件都是**独立文件**（未打包 zip），可逐个直接下载。"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
 
-      - name: 上传产物（任何触发方式都留档）
-        uses: actions/upload-artifact@v4
+      # 逐文件原样上传（archive: false）—— 这样下载到的就是 .apk 本体，不是 zip。
+      - name: 上传 arm64-v8a 包
+        uses: actions/upload-artifact@v7
         with:
-          name: juice-ssh-flutter-${{ steps.version.outputs.version }}-apk
-          path: dist-release/*
+          path: dist-release/juice-ssh-flutter-${{ steps.version.outputs.version }}-arm64-v8a.apk
+          archive: false
           if-no-files-found: error
           retention-days: 30
 
-      - name: 发布到 Releases（仅 tag 触发）
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: 上传 armeabi-v7a 包
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/juice-ssh-flutter-${{ steps.version.outputs.version }}-armeabi-v7a.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传 x86_64 包
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/juice-ssh-flutter-${{ steps.version.outputs.version }}-x86_64.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传通用包
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/juice-ssh-flutter-${{ steps.version.outputs.version }}.apk
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 上传校验和
+        uses: actions/upload-artifact@v7
+        with:
+          path: dist-release/SHA256SUMS.txt
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 发布到 Releases（tag 触发，或手动运行勾选 publish）
+        # 手动运行时没有 tag，所以显式给 tag_name（v<版本号>，已存在则挂到该 tag 上）；
+        # tag 触发时它恰好等于当前 tag，行为不变。
+        if: startsWith(github.ref, 'refs/tags/') || inputs.publish == true
         uses: softprops/action-gh-release@v2
         with:
           files: dist-release/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
