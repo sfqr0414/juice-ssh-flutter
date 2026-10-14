@@ -1134,6 +1134,11 @@ class _TerminalPageState extends State<TerminalPage> {
     });
   }
 
+  /// 滚轮事件的像素余数，对应原版的 `mScrollRemainder`。
+  ///
+  /// 原版按单元格高度累积：不足一行高度的位移留到下一次，避免"每动一点就发一个滚轮"。
+  double _wheelRemainder = 0;
+
   void _onTerminalPointerMove(PointerMoveEvent event) {
     final origin = _longPressOrigin;
     // 这里**不能**提前 `return`：下方的"主屏拖动滚动"必须在每次指针移动时执行。
@@ -1153,6 +1158,53 @@ class _TerminalPageState extends State<TerminalPage> {
     //
     // 用 `assert` 包住：断言在 release 包中被整段剥离，交付的 APK 不会因为
     // 每次指针移动都打印而刷爆 logcat；调试/性能分析时仍可用。
+    // 鼠标上报模式下把竖向滑动**转发成滚轮事件**（原版行为）。
+    //
+    // 原版 `EmulatorView.onScroll`（反汇编 @3fa788）在 `isMouseTrackingActive()` 为真时：
+    //     n = (int)((distanceY + mScrollRemainder) / mCharacterHeight);
+    //     mScrollRemainder = (distanceY + mScrollRemainder) - n * mCharacterHeight;
+    //     while (n > 0) sendMouseEventCode(ev, 65);   // 上划 → 滚轮下（button 5）
+    //     while (n < 0) sendMouseEventCode(ev, 64);   // 下划 → 滚轮上（button 4）
+    // 这里逐项照搬。注意 Android 的 `distanceY` 是"上一次焦点 y − 本次 y"，与 Flutter 的
+    // `delta.dy`（本次 − 上一次）符号相反，所以取负后再整除（值向零截断，同 Java 的
+    // float→int）。
+    //
+    // 编码也用原版的 X10 形式：`ESC [ M <code+32> <col+32> <row+32>`
+    // （`sendMouseEventCode` 里就是 code 加 32；列/行取手指所在单元格，与它取
+    // MotionEvent 坐标同义）。远端程序据此滚自己的视图，而回滚缓冲不动 —— 这正是
+    // "交互命令里不滚历史、但滑动仍有反应"的原版手感。
+    if (!_selectingStart &&
+        !_selectingEnd &&
+        _controller.terminal.mouseMode != MouseMode.none &&
+        event.delta.dy != 0) {
+      final size = _terminalLayoutSize;
+      final terminal = _controller.terminal;
+      if (size != null && terminal.viewHeight > 0) {
+        final cellHeight =
+            (size.height - _terminalMargin * 2) / terminal.viewHeight;
+        if (cellHeight > 0) {
+          _wheelRemainder += event.delta.dy;
+          final lines = (-_wheelRemainder / cellHeight).truncate();
+          if (lines != 0) {
+            _wheelRemainder += lines * cellHeight;
+            final cell = _cellAt(event.localPosition);
+            final column = (cell?.column ?? 0) + 1;
+            final row = (cell?.row ?? 0) + 1;
+            final code = lines > 0 ? 65 : 64;
+            final seq = StringBuffer()
+              ..write('\u001b[M')
+              ..writeCharCode(32 + code)
+              ..writeCharCode(32 + column.clamp(1, 223))
+              ..writeCharCode(32 + row.clamp(1, 223));
+            final bytes = seq.toString().codeUnits;
+            for (var i = 0; i < lines.abs(); i++) {
+              _controller.sendBytes(bytes);
+            }
+          }
+        }
+      }
+    }
+
     // 这里**不再**自己驱动滚动。
     //
     // 曾经用裸指针按 `event.delta.dy` 调 `_terminalScroll.jumpTo` 做"兜底滚动"，

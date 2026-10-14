@@ -314,6 +314,12 @@ def _session_loop(channel, tag: str) -> None:
     """会话通道：先吐固定的 ANSI 样本，再回显。"""
     print('%s 已发样本横幅（%d 字节）' % (tag, len(BANNER)), flush=True)
     channel.sendall(BANNER)
+    # `--mouse-tracking`：让远端开鼠标上报（DECSET ?1002h），用于验证"交互模式下把
+    # 竖向滑动转发成滚轮"。app 端此时应发出 `ESC [ M <code+32> <col+32> <row+32>`
+    # （本脚本会把收到的原始字节打进日志），且**回滚缓冲不应滚动**。
+    if '--mouse-tracking' in sys.argv:
+        channel.sendall(b'\x1b[?1002h')
+        print('%s 已开鼠标上报 ?1002h' % tag, flush=True)
     # agent 探测默认关闭：第 38 轮打开它之后，所有连接都在 banner 阶段被客户端重置。
     # 先关掉做证伪，确认症状是否随它出现（加 `--agent-probe` 才启用）。
     if '--agent-probe' in sys.argv:
