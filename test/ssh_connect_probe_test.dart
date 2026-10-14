@@ -12,6 +12,11 @@
 //
 // 运行：flutter test test/ssh_connect_probe_test.dart
 // 前置：python tools/_sshd.py 2222 --many-lines
+// 没有夹具时会**自动跳过**（见 `_fixtureListening`），不会让 `flutter test` 常态变红。
+// 想验协议完整性（exec/退出码）可以换成 tools/_sshd_asyncssh.py —— 但注意它的 pty 会话
+// 带行缓冲，不含换行的输入会被它吞掉，验"客户端写了什么"必须用 `_sshd.py`。
+
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:juice_ssh_flutter/data/models.dart';
@@ -25,8 +30,28 @@ class _MemoryHostKeys implements HostKeyStore {
   Future<void> remember(KnownHost host) async {}
 }
 
+/// 夹具是否在本机监听。没有夹具时这个用例必然失败（TCP 拒连 → `connect` 超时），
+/// 但那是**缺少前置**，不是产品缺陷 —— 直接跳过，免得 `flutter test` 常态两片红、
+/// 把真正的问题淹掉（本仓库只有这一个用例依赖外部进程）。
+Future<bool> _fixtureListening() async {
+  try {
+    final socket = await Socket.connect('127.0.0.1', 2222,
+        timeout: const Duration(milliseconds: 800));
+    socket.destroy();
+    return true;
+  } on SocketException {
+    return false;
+  }
+}
+
 void main() {
   test('宿主机直连探测服务器：打印真实异常', () async {
+    if (!await _fixtureListening()) {
+      // ignore: avoid_print
+      print('PROBE 跳过：本机 2222 没有夹具，先跑 '
+          'python tools/_sshd.py 2222 --many-lines');
+      return;
+    }
     const connection = Connection(
       nickname: 'probe',
       address: '127.0.0.1',
