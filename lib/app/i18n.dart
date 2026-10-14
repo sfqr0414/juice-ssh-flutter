@@ -3,28 +3,33 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// 界面文案。
+/// @brief 界面文案。
 ///
 /// 数据来自反编译出的原始资源：`assets/i18n/strings_en.json` 对应
 /// `res/values/strings.xml`，`strings_zh.json` 对应 `res/values-zh-rCN/strings.xml`。
 /// 因此这里的每一条文案都与原版 JuiceSSH 3.2.2 逐字一致，而不是重新翻译的。
 class JuiceStrings {
+  /// @brief 创建文案表：当前语言 + 英文回退表。
   const JuiceStrings(this._strings, this._fallback);
 
+  /// @brief 当前语言的键值对。
   final Map<String, String> _strings;
+  /// @brief 回退用的英文键值对。
   final Map<String, String> _fallback;
 
+  /// @brief 英文文案资源路径（对应 `res/values/strings.xml`）。
   static const _enAsset = 'assets/i18n/strings_en.json';
+  /// @brief 中文文案资源路径（对应 `res/values-zh-rCN/strings.xml`）。
   static const _zhAsset = 'assets/i18n/strings_zh.json';
 
-  /// 当前语言的键数量，便于自检。
+  /// @brief 当前语言的键数量，便于自检。
   int get length => _strings.length;
 
-  /// 取一条文案；缺失时回退到英文，再缺失则回退到键名本身
+  /// @brief 取一条文案；缺失时回退到英文，再缺失则回退到键名本身
   /// （键名可见可以让漏翻/漏提取立刻暴露出来，而不是悄悄显示空白）。
   String call(String key) => _strings[key] ?? _fallback[key] ?? key;
 
-  /// 取一条文案并按 Java/Android 的格式串填充参数。
+  /// @brief 取一条文案并按 Java/Android 的格式串填充参数。
   ///
   /// 支持 `%s`、`%d`、`%f`、`%1$s` 这类位置参数以及 `%%`。
   String format(String key, List<Object?> args) {
@@ -48,6 +53,7 @@ class JuiceStrings {
     );
   }
 
+  /// @brief 按系统语言载入文案表，非中文时英文自回退。
   static Future<JuiceStrings> load(Locale locale) async {
     final english = await _readAsset(_enAsset);
     final language = locale.languageCode.toLowerCase();
@@ -59,6 +65,7 @@ class JuiceStrings {
     return JuiceStrings(english, english);
   }
 
+  /// @brief 读取并解析一份文案 JSON。
   static Future<Map<String, String>> _readAsset(String path) async {
     final raw = await rootBundle.loadString(path);
     final decoded = json.decode(raw) as Map<String, dynamic>;
@@ -66,24 +73,31 @@ class JuiceStrings {
   }
 }
 
-/// 把 [JuiceStrings] 挂到 widget 树上。
+/// @brief 把 [JuiceStrings] 挂到 widget 树上。
 class JuiceI18n extends InheritedWidget {
+  /// @brief 创建文案注入 widget。
   const JuiceI18n({required this.strings, required super.child, super.key});
 
+  /// @brief 要注入的文案表。
   final JuiceStrings strings;
 
+  /// @brief 取最近的 [JuiceStrings]；未挂载时断言失败。
   static JuiceStrings of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<JuiceI18n>();
     assert(scope != null, 'JuiceI18n 未挂载：请检查 main.dart 的根 widget');
     return scope!.strings;
   }
 
+  /// @brief 文案表换了就通知依赖方重建。
   @override
   bool updateShouldNotify(JuiceI18n oldWidget) =>
       oldWidget.strings != strings;
 }
 
+/// @brief 给 [BuildContext] 加取文案的便捷入口。
 extension JuiceStringsContext on BuildContext {
-  /// `context.s('connection_new')` 取文案；`context.sf('x', [a])` 带参数。
+  /// @brief `context.s('connection_new')` 取文案；
+  ///
+  /// `context.sf('x', [a])` 带参数。
   JuiceStrings get s => JuiceI18n.of(this);
 }

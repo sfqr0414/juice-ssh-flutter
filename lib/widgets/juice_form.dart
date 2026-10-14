@@ -19,55 +19,57 @@ import '../app/juice_theme.dart';
 // 所以本文件把「标题 / 标签行 / 输入框 / 按钮」四件事抽出来共用。
 // 两个坑都在注释里写清楚了：标题高度、以及 `TableLayout` 的整列等宽。
 
-/// 分组标题高度：实测 84px = 32dp。
+/// @brief 分组标题高度：实测 84px = 32dp。
 ///
 /// **不是** `?android:listPreferredItemHeightSmall` 的 48dp —— 那会得到 126px，
 /// 比原版高 42px 并把下面所有行推下去。
 const double juiceFormSectionHeaderHeight = 84 / 2.625;
 
-/// 分组标题的左侧内边距（墨迹起于 66px ⇒ 8dp）。
+/// @brief 分组标题的左侧内边距（墨迹起于 66px ⇒ 8dp）。
 const double juiceFormSectionHeaderPadding = 8;
 
-/// 标签与控件之间的 `android:layout_marginRight="5.0dp"`。
+/// @brief 标签与控件之间的 `android:layout_marginRight="5.0dp"`。
 ///
 /// 它落在标签盒子的**外面**：原版标签 TextView 是 `[42,249]`，控件从 262 开始，
 /// 249→262 正好 13px = 5dp。
 const double juiceFormLabelGap = 5;
 
-/// `EditText` 行高度（实测 106px = 40.38dp）。
+/// @brief `EditText` 行高度（实测 106px = 40.38dp）。
 const double juiceEditRowHeight = 106 / 2.625;
 
-/// `Spinner` 行高度（布局里写死 `android:layout_height="36.0dp"`，实测 95px）。
+/// @brief `Spinner` 行高度（布局里写死 `android:layout_height="36.0dp"`，实测
+/// 95px）。
 const double juiceSpinnerRowHeight = 36;
 
-/// 「普通」按钮高度：`manage_identity.xml` 里 `SET (OPTIONAL)` 的 36dp。
+/// @brief 「普通」按钮高度：`manage_identity.xml` 里 `SET (OPTIONAL)` 的 36dp。
 const double juiceButtonHeight = 36;
 
-/// 「宽」按钮高度：`@id/generate_snippet` 的 42dp。
+/// @brief 「宽」按钮高度：`@id/generate_snippet` 的 42dp。
 const double juiceWideButtonHeight = 42;
 
-/// `@id/identityPasswordButton` 等按钮的 `android:layout_marginLeft="4.0dp"`
+/// @brief `@id/identityPasswordButton` 等按钮的
+/// `android:layout_marginLeft="4.0dp"`
 /// （实测按钮起于 260，而输入框起于 249，差 11px ≈ 4dp）。
 const double juiceButtonLeftMargin = 4;
 
-/// `EditText` 下划线（`@drawable/abc_edit_text_material` 的底边线）。
+/// @brief `EditText` 下划线（`@drawable/abc_edit_text_material` 的底边线）。
 ///
 /// 实测：`EditText` 是 `[262,422][1038,528]`（高 106px），线却在 `y=504..507`、
 /// 颜色 `#666666`，而且左右各内缩 10px（272..1027）—— **线既不在视图底边，
 /// 也不占满整个宽度**。
 const Color juiceEditUnderlineColor = Color(0xFF666666);
 
-/// 下划线粗细（1dp）。
+/// @brief 下划线粗细（1dp）。
 const double juiceEditUnderlineHeight = 1;
 
-/// 下划线底边距行底：线的实心部分在 505..506，取线顶 504.9px，
+/// @brief 下划线底边距行底：线的实心部分在 505..506，取线顶 504.9px，
 /// 行底 528px ⇒ 528 − 504.9 − 2.625 = 20.5px。
 const double juiceEditUnderlineBottom = 20.5 / 2.625;
 
-/// 下划线左右各内缩 10px（9-patch 自带的留白）。
+/// @brief 下划线左右各内缩 10px（9-patch 自带的留白）。
 const double juiceEditUnderlineInset = 10 / 2.625;
 
-/// `style="?android:listSeparatorTextViewStyle"` 分组标题。
+/// @brief `style="?android:listSeparatorTextViewStyle"` 分组标题。
 ///
 /// 该样式 = 14sp + **加粗** + **`textAllCaps=true`** + `gravity=center_vertical`，
 /// 原版在标题上覆写了 `android:textColor="@color/text_form_heading"`。
@@ -76,10 +78,13 @@ const double juiceEditUnderlineInset = 10 / 2.625;
 /// 这种词形）。别和设置页的 `PreferenceCategory` 搞混 —— 那个不做大写，
 /// 实测渲染出来就是 "General" / "App Security"。
 class JuiceFormSectionHeader extends StatelessWidget {
+  /// @brief 用标题文案构造 32dp 高的分组标题。
   const JuiceFormSectionHeader({super.key, required this.text});
 
+  /// @brief 分组标题原文，渲染时转大写。
   final String text;
 
+  /// @brief 构建 32dp 高、带下边框的大写分组标题。
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -118,13 +123,14 @@ class JuiceFormSectionHeader extends StatelessWidget {
   }
 }
 
-/// 一行「标签 + 控件」，对应 `TableRow` 里
+/// @brief 一行「标签 + 控件」，对应 `TableRow` 里
 /// `TextView(wrap_content, marginRight=5dp)` + `控件(0dp, weight=1)` 的组合。
 ///
 /// [labelWidth] 必须按**整列**传：`TableLayout` 的第 0 列宽度由这一列里最宽的
 /// 标签决定，不是每个标签各算各的。连接编辑页是 207px（"Backspace:" 那一列），
 /// 身份编辑页是 194px（"Private Key:"）。
 class JuiceFormRow extends StatelessWidget {
+  /// @brief 用标签、标签列宽与控件构造一行表单。
   const JuiceFormRow({
     super.key,
     required this.label,
@@ -133,13 +139,17 @@ class JuiceFormRow extends StatelessWidget {
     this.height,
   });
 
+  /// @brief 行首标签文案。
   final String label;
+  /// @brief 标签列宽，按整列最宽标签传入。
   final double labelWidth;
+  /// @brief 标签右侧的控件。
   final Widget child;
 
-  /// 整行高度。`EditText` 行 106px、`Spinner`/按钮行 95px，两者不一样。
+  /// @brief 整行高度。`EditText` 行 106px、`Spinner`/按钮行 95px，两者不一样。
   final double? height;
 
+  /// @brief 构建一行「标签 + 控件」。
   @override
   Widget build(BuildContext context) {
     final row = Row(
@@ -171,10 +181,11 @@ class JuiceFormRow extends StatelessWidget {
   }
 }
 
-/// 表单输入框：`EditText` + 自绘下划线。
+/// @brief 表单输入框：`EditText` + 自绘下划线。
 ///
 /// 行高固定 106px，输入框在其中垂直居中（这样文字墨迹位置与原版一致）。
 class JuiceFormTextField extends StatelessWidget {
+  /// @brief 用控制器与可选的下划线、字号等参数构造输入框。
   const JuiceFormTextField({
     super.key,
     required this.controller,
@@ -190,32 +201,42 @@ class JuiceFormTextField extends StatelessWidget {
     this.onSubmitted,
   });
 
+  /// @brief 输入框的文本控制器。
   final TextEditingController controller;
+  /// @brief 占位提示文字。
   final String? hintText;
+  /// @brief 键盘类型（端口等数字输入）。
   final TextInputType? keyboardType;
+  /// @brief 输入过滤（如端口号只留数字）。
   final List<TextInputFormatter>? inputFormatters;
 
-  /// `inputType=textVisiblePassword` 的字段要关掉自动联想/纠错。
+  /// @brief `inputType=textVisiblePassword` 的字段要关掉自动联想/纠错。
   final bool autocorrect;
 
-  /// 行高。表单里是 106px；对话框里的 `EditText` 实测 **118px**（45dp），
+  /// @brief 行高。表单里是 106px；对话框里的 `EditText` 实测 **118px**（45dp），
   /// 下划线跟着行底下移。
   final double height;
 
+  /// @brief 输入文字字号。
   final double fontSize;
 
-  /// 下划线颜色与粗细。默认值是**未聚焦**态：1dp、`#666666`（编辑器里实测）。
+  /// @brief 下划线颜色与粗细。默认值是**未聚焦**态：1dp、
+  /// `#666666`（编辑器里实测）。
   /// 对话框里的输入框在原版是**聚焦**态 —— Material 规范下变成 2dp 的
   /// `colorControlActivated`。实测 `.research/id_o2.png`：Quick Connect 输入框的
   /// 下划线是 `accentBold` (213,186,49)、5px = 2dp、x 135..957（左右各内缩约
   /// 4dp，与 [juiceEditUnderlineInset] 的 10px 完全吻合），克隆当时只有 1dp 的
   /// `#666666`，所以在截图里根本看不到强调色。
   final Color underlineColor;
+  /// @brief 下划线粗细。
   final double underlineHeight;
 
+  /// @brief 是否自动聚焦（对话框里的输入框为 true）。
   final bool autofocus;
+  /// @brief 回车提交回调。
   final ValueChanged<String>? onSubmitted;
 
+  /// @brief 构建带自绘下划线的表单输入框。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -298,7 +319,7 @@ class JuiceFormTextField extends StatelessWidget {
   }
 }
 
-/// `CheckBox` + 文字（`layout_weight=1` 撑满），行高按调用方给。
+/// @brief `CheckBox` + 文字（`layout_weight=1` 撑满），行高按调用方给。
 ///
 /// 原版是 `CheckBox w=0dp layout_weight=1 layout_marginRight=5dp`，
 /// 文字即复选框自身的 `android:text`，`textAppearance=?android:textAppearanceSmall`、
@@ -313,6 +334,7 @@ class JuiceFormTextField extends StatelessWidget {
 /// 的**控件盒**是 24dp = 63px，18dp 的方框居中、离控件左边 8px。所以
 /// 前面补 11px 让方框落到 61px，方框到文字再留 12px（控件右缘 116 → 文字 128）。
 class JuiceCheckRow extends StatelessWidget {
+  /// @brief 用文案、当前状态与回调构造一行复选框。
   const JuiceCheckRow({
     super.key,
     required this.label,
@@ -322,23 +344,28 @@ class JuiceCheckRow extends StatelessWidget {
     this.fontSize = 14,
   });
 
+  /// @brief 复选框右侧文字。
   final String label;
+  /// @brief 复选框当前状态。
   final bool value;
+  /// @brief 勾选状态变化回调。
   final ValueChanged<bool> onChanged;
 
-  /// 行高。原版复选框行 84px，比输入框行（106px）矮。
+  /// @brief 行高。原版复选框行 84px，比输入框行（106px）矮。
   final double? height;
 
+  /// @brief 文字字号。
   final double fontSize;
 
-  /// 方框距行左 19px，而控件内方框自带 8px 左边距 ⇒ 前面补 11px。
+  /// @brief 方框距行左 19px，而控件内方框自带 8px 左边距 ⇒ 前面补 11px。
   static const double _boxLead = 11 / 2.625;
 
-  /// 控件右缘（116px）到文字墨迹（128px）之间的距离。
+  /// @brief 控件右缘（116px）到文字墨迹（128px）之间的距离。
   ///
   /// 实测 Flutter 侧留 12px 时文字落在 130px（比原版晚 2px），改成 10px。
   static const double _labelGap = 10 / 2.625;
 
+  /// @brief 构建整行可点的复选框行。
   @override
   Widget build(BuildContext context) {
     final row = Row(
@@ -372,7 +399,8 @@ class JuiceCheckRow extends StatelessWidget {
   }
 }
 
-/// `@drawable/button` —— 圆角 2dp、1dp 描边、实心 `@color/button_background`，
+/// @brief `@drawable/button` —— 圆角 2dp、1dp 描边、实心
+/// `@color/button_background`，
 /// 文字 `@color/button_text`、字号 `@dimen/text_button`（16sp）。
 ///
 /// 原版是 `Button` 且 `background=@drawable/button`，所以按钮的**视图边界就是
@@ -382,6 +410,7 @@ class JuiceCheckRow extends StatelessWidget {
 /// 资源里写的是 "Set (optional)" / "Generate snippet"，屏幕上却渲染成
 /// "SET (OPTIONAL)" / "GENERATE SNIPPET"（uiautomator 层级里也是大写的）。
 class JuiceFormButton extends StatelessWidget {
+  /// @brief 用按钮文案、点击回调与高度构造表单按钮。
   const JuiceFormButton({
     super.key,
     required this.label,
@@ -389,10 +418,14 @@ class JuiceFormButton extends StatelessWidget {
     this.height = juiceButtonHeight,
   });
 
+  /// @brief 按钮文案，渲染时转大写。
   final String label;
+  /// @brief 点击回调。
   final VoidCallback onPressed;
+  /// @brief 按钮高度，默认 36dp（宽按钮传 42dp）。
   final double height;
 
+  /// @brief 构建 2dp 圆角、1dp 描边的实心按钮。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;

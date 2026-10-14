@@ -9,7 +9,7 @@ import '../widgets/juice_popup_menu.dart';
 import '../widgets/pager_list.dart';
 import 'identities_screen.dart';
 
-/// 连接分组管理页。
+/// @brief 连接分组管理页。
 ///
 /// ### 原版事实：**没有独立的"分组列表"页**
 /// 反编译资源里没有 group 列表的布局/Activity。原版的分组管理分散在两处：
@@ -67,34 +67,42 @@ import 'identities_screen.dart';
 /// 计数的口径是 `connectiongroupmembership` 表（原版把连接与分组的多对多关系
 /// 放在这张表里，见 `JuiceDatabase._schema`）。
 class GroupsScreen extends StatefulWidget {
+  /// @brief 创建分组管理页 widget。
   const GroupsScreen({super.key});
 
-  /// 新建分组的入口图标键。
+  /// @brief 新建分组的入口图标键。
   ///
   /// `menu_item_new_group` 在原版菜单里没有 `android:icon`；
   /// 这里用 Material 的加号作等价表达（与同项目其它"新建"入口一致）。
   static const IconData newGroupIcon = Icons.add;
 
+  /// @brief 创建分组管理页的状态对象。
   @override
   State<GroupsScreen> createState() => _GroupsScreenState();
 }
 
+/// @brief 分组管理页的状态：分组列表与各分组的成员计数。
 class _GroupsScreenState extends State<GroupsScreen> {
+  /// @brief 数据库单例。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 全部连接分组。
   List<ConnectionGroup> _groups = const <ConnectionGroup>[];
 
-  /// 分组 id → 该分组下的连接条数。
+  /// @brief 分组 id → 该分组下的连接条数。
   Map<int, int> _memberCounts = const <int, int>{};
 
+  /// @brief 是否仍在加载分组数据，加载中显示进度圈。
   bool _loading = true;
 
+  /// @brief 初始化并触发首次数据加载。
   @override
   void initState() {
     super.initState();
     _reload();
   }
 
+  /// @brief 重新读取分组与成员计数并刷新界面。
   Future<void> _reload() async {
     final groups = await _db.groups();
     final counts = await _memberCountsByGroup();
@@ -106,7 +114,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     });
   }
 
-  /// 一次查询统计出每个分组下有多少条连接。
+  /// @brief 一次查询统计出每个分组下有多少条连接。
   ///
   /// `connectiongroupmembership` 的列名是 `"group"` / `connection`
   /// （`group` 是 SQL 关键字，建表时加了双引号，见 `JuiceDatabase._schema`），
@@ -126,7 +134,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
   // ------------------------------------------------------------ 展示辅助 --
 
-  /// 分组行的副标题，借用 `IdentityListAdapter` 的计数文案结构。
+  /// @brief 分组行的副标题，借用 `IdentityListAdapter` 的计数文案结构。
   String _usageSubtitle(BuildContext context, ConnectionGroup group) {
     final s = context.s;
     final count = _memberCounts[group.id] ?? 0;
@@ -137,7 +145,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
   // ------------------------------------------------------------------ 动作 --
 
-  /// 新建分组 —— 对应 `@string/new_group`（`NewGroupPrompt`）。
+  /// @brief 新建分组 —— 对应 `@string/new_group`（`NewGroupPrompt`）。
   Future<void> _create() async {
     final s = context.s;
     // `NewGroupPrompt` 的标题是 `@string/new_group`，
@@ -164,8 +172,9 @@ class _GroupsScreenState extends State<GroupsScreen> {
     await _reload();
   }
 
-  /// 重命名分组 —— 对应 `group_context_menu.xml` 的 `edit`，
-  /// 也就是原版的 `ManageGroupActivity`（ActionBar 标题 `@string/update_group`）。
+  /// @brief 重命名分组 —— 对应 `group_context_menu.xml` 的 `edit`，
+  /// 也就是原版的 `ManageGroupActivity`
+  /// （ActionBar 标题 `@string/update_group`）。
   Future<void> _rename(ConnectionGroup group) async {
     final s = context.s;
     final name = await JuiceDialogs.promptForText(
@@ -189,7 +198,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     await _reload();
   }
 
-  /// 删除分组 —— 对应 `group_context_menu.xml` 的 `delete`。
+  /// @brief 删除分组 —— 对应 `group_context_menu.xml` 的 `delete`。
   ///
   /// **偏离原版**：原版直接删库、不确认（见类注释）；
   /// 这里按任务书要求先弹 [JuiceDialogs.confirm]。
@@ -211,7 +220,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     await _reload();
   }
 
-  /// 长按分组 → 上下文菜单。
+  /// @brief 长按分组 → 上下文菜单。
   ///
   /// `group_context_menu.xml` 有三项（`edit` → `@string/edit`、
   /// `share` → `@string/share`、`delete` → `@string/delete`）；`share` 属
@@ -254,6 +263,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     }
   }
 
+  /// @brief 用 SnackBar 显示一条提示。
   void _warn(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -261,6 +271,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建分组列表与右下角的新建按钮。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -338,7 +349,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     );
   }
 
-  /// 空状态。
+  /// @brief 空状态。
   ///
   /// 度量沿用 `port_forwards.xml` / `pager_list.xml` 的写法
   /// （标题 `@dimen/text_heading` = 36sp / `@color/text_heading`，
@@ -363,7 +374,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
   }
 }
 
-/// 分组行长按菜单的动作 id。
+/// @brief 分组行长按菜单的动作 id。
 ///
 /// 取值对应 `res/menu/group_context_menu.xml` 的两项
 /// `edit`（这里叫 `rename`，因为它就是改名）与 `delete`；

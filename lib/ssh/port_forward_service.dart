@@ -8,17 +8,24 @@ import '../data/models.dart';
 import 'forward_notifications.dart';
 import 'ssh_service.dart';
 
-/// 一条转发占用的运行时资源。
+/// @brief 一条转发占用的运行时资源。
 class _RunningForward {
+  /// @brief 为一条转发创建运行时资源容器。
   _RunningForward(this.forward);
 
+  /// @brief 这条运行时资源对应的转发配置。
   final PortForward forward;
+  /// @brief 该转发挂上的所有订阅，关闭时逐个取消。
   final List<StreamSubscription<Object?>> subscriptions =
       <StreamSubscription<Object?>>[];
+  /// @brief `-L` 模式下本机监听的 ServerSocket。
   final List<ServerSocket> listeners = <ServerSocket>[];
+  /// @brief `-R` 模式下远端返回的转发句柄。
   final List<SSHRemoteForward> remoteForwards = <SSHRemoteForward>[];
+  /// @brief `-D` 模式下启动的 SOCKS5 代理句柄。
   final List<SSHDynamicForward> socksForwards = <SSHDynamicForward>[];
 
+  /// @brief 释放这条转发占用的全部资源。
   Future<void> close() async {
     final subs = List<StreamSubscription<Object?>>.of(subscriptions);
     subscriptions.clear();
@@ -41,7 +48,7 @@ class _RunningForward {
   }
 }
 
-/// 端口转发的运行时。
+/// @brief 端口转发的运行时。
 ///
 /// 原版把转发挂在连接上（`portforward.connection`），连接建立后由
 /// `PortForwardListAdapter$c` 这个开关做真实的建立/断开；会话断开时统一回收。
@@ -60,42 +67,45 @@ class _RunningForward {
 /// 原版接受 Android 的安全限制，动态转发不会注册成系统级代理，调用方需要
 /// 自己把代理指向 `127.0.0.1:<port>`。
 class PortForwardService extends ChangeNotifier {
+  /// @brief 为一个已建立的会话创建转发运行时。
   PortForwardService({
     required this.session,
     required this.connection,
     this.disconnectLabel = 'Disconnect',
   });
 
-  /// 已经建立的 SSH 会话；转发通道都从它上面拨。
+  /// @brief 已经建立的 SSH 会话；转发通道都从它上面拨。
   final JuiceSshSession session;
 
-  /// 转发所属的连接，`host` 缺省时用它自己的地址。
+  /// @brief 转发所属的连接，`host` 缺省时用它自己的地址。
   final Connection connection;
 
-  /// 通知上「停止」动作的文案（原版是 `@string/disconnect`）。
+  /// @brief 通知上「停止」动作的文案（原版是 `@string/disconnect`）。
   ///
   /// 由界面层注入（只有那里拿得到本地化文案），默认英文。
   String disconnectLabel;
 
-  /// 正在转发的条目，**按主键**索引。
+  /// @brief 正在转发的条目，**按主键**索引。
   ///
   /// 不能用 `Map<PortForward, _>`：列表页的实例是从数据库重新读出来的，
   /// 与这里持有的实例不是同一个对象，而 `Map` 默认按对象标识比较 ——
   /// 那样「这条转发现在通没通」永远查不到，开关会一直显示关闭。
   final Map<int, _RunningForward> _running = <int, _RunningForward>{};
 
+  /// @brief 服务是否已随会话关闭。
   var _closed = false;
 
-  /// 当前处于活动状态的转发，用于列表页的开关状态。
+  /// @brief 当前处于活动状态的转发，用于列表页的开关状态。
   List<PortForward> get active =>
       List<PortForward>.unmodifiable(_running.values.map((r) => r.forward));
 
+  /// @brief 是否已关闭（关闭后不能再起转发）。
   bool get isClosed => _closed;
 
-  /// 这一条是否正在转发。
+  /// @brief 这一条是否正在转发。
   bool isActive(PortForward forward) => _running.containsKey(forward.id);
 
-  /// 启动一条转发，成功返回 true。
+  /// @brief 启动一条转发，成功返回 true。
   Future<bool> start(PortForward forward) async {
     if (_closed || _running.containsKey(forward.id)) return false;
     final running = _RunningForward(forward);
@@ -120,7 +130,7 @@ class PortForwardService extends ChangeNotifier {
     }
   }
 
-  /// 停掉一条正在转发的项。
+  /// @brief 停掉一条正在转发的项。
   Future<void> stop(PortForward forward) async {
     final running = _running.remove(forward.id);
     if (running == null) return;
@@ -129,7 +139,7 @@ class PortForwardService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 开关：正在转发就停掉，否则启动。返回操作后是否处于转发状态。
+  /// @brief 开关：正在转发就停掉，否则启动。返回操作后是否处于转发状态。
   Future<bool> toggle(PortForward forward) async {
     if (isActive(forward)) {
       await stop(forward);
@@ -138,7 +148,7 @@ class PortForwardService extends ChangeNotifier {
     return start(forward);
   }
 
-  /// 批量启动，返回成功条数。
+  /// @brief 批量启动，返回成功条数。
   Future<int> startAll(Iterable<PortForward> forwards) async {
     var started = 0;
     for (final forward in forwards) {
@@ -147,7 +157,7 @@ class PortForwardService extends ChangeNotifier {
     return started;
   }
 
-  /// 关闭所有转发。会话断开时必须调用。
+  /// @brief 关闭所有转发。会话断开时必须调用。
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -161,6 +171,8 @@ class PortForwardService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// @brief 为一条转发挂上常驻通知。
+  ///
   /// 原版每条活动转发都挂一个常驻通知：带计时器 + 一个停止动作
   /// （`gi0.smali`）。通知的 `contentIntent` 由 `openInBrowser` 决定。
   void _publishNotification(PortForward forward) {
@@ -174,7 +186,7 @@ class PortForwardService extends ChangeNotifier {
     );
   }
 
-  /// 通知副标题：把这条转发在做什么写清楚。
+  /// @brief 通知副标题：把这条转发在做什么写清楚。
   String _describe(PortForward forward) {
     final local = 'localhost:${forward.localPort ?? 0}';
     final remote = '${_effectiveHost(forward)}:${forward.remotePort ?? 0}';
@@ -187,7 +199,7 @@ class PortForwardService extends ChangeNotifier {
 
   // ------------------------------------------------------------ 三种模式 --
 
-  /// `-L`：本机监听，接入即经服务器拨到 `host:remotePort`。
+  /// @brief `-L`：本机监听，接入即经服务器拨到 `host:remotePort`。
   Future<bool> _startLocal(
     PortForward forward,
     _RunningForward running,
@@ -219,7 +231,7 @@ class PortForwardService extends ChangeNotifier {
     return true;
   }
 
-  /// 把一条本地接入的 socket 与一条转发通道对接起来。
+  /// @brief 把一条本地接入的 socket 与一条转发通道对接起来。
   Future<void> _pumpLocal(
     Socket socket,
     String host,
@@ -236,7 +248,7 @@ class PortForwardService extends ChangeNotifier {
     _bridge(socket, channel, running);
   }
 
-  /// `-R`：请服务器监听，接入的连接转回本机 `localPort`。
+  /// @brief `-R`：请服务器监听，接入的连接转回本机 `localPort`。
   Future<bool> _startRemote(
     PortForward forward,
     _RunningForward running,
@@ -265,7 +277,7 @@ class PortForwardService extends ChangeNotifier {
     return true;
   }
 
-  /// 把服务器转回来的一条通道接到本机 `localPort` 上的服务。
+  /// @brief 把服务器转回来的一条通道接到本机 `localPort` 上的服务。
   Future<void> _pumpRemote(
     SSHForwardChannel channel,
     int localPort,
@@ -281,7 +293,7 @@ class PortForwardService extends ChangeNotifier {
     _bridge(socket, channel, running);
   }
 
-  /// `-D`：本机 SOCKS5，由 dartssh2 自己接管。
+  /// @brief `-D`：本机 SOCKS5，由 dartssh2 自己接管。
   Future<bool> _startDynamic(
     PortForward forward,
     _RunningForward running,
@@ -296,7 +308,7 @@ class PortForwardService extends ChangeNotifier {
 
   // -------------------------------------------------------------- 工具 --
 
-  /// 双向对拷。任一侧结束就关掉另一侧，避免留下半开连接。
+  /// @brief 双向对拷。任一侧结束就关掉另一侧，避免留下半开连接。
   void _bridge(
     Socket socket,
     SSHForwardChannel channel,
@@ -324,7 +336,7 @@ class PortForwardService extends ChangeNotifier {
     );
   }
 
-  /// 与 `PortForward.t(Context)` 一致：`host` 为空时用连接自身的地址。
+  /// @brief 与 `PortForward.t(Context)` 一致：`host` 为空时用连接自身的地址。
   String _effectiveHost(PortForward forward) {
     final host = forward.host ?? '';
     return host.isNotEmpty ? host : connection.address;

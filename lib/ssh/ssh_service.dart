@@ -8,17 +8,22 @@ import '../data/juice_database.dart';
 import '../data/models.dart';
 import 'password_vault.dart';
 
-/// 主机密钥的确认结果。对应原版「主机密钥已被拒绝 / Host key rejected」这条路径。
+/// @brief 主机密钥的确认结果。
+///
+/// 对应原版「主机密钥已被拒绝 / Host key rejected」这条路径。
 enum HostKeyVerdict {
-  /// 首次见到该主机密钥，用户或策略选择信任
+  /// @brief 首次见到该主机密钥，用户或策略选择信任
   accepted,
 
-  /// 用户拒绝，或密钥与已知记录不符
+  /// @brief 用户拒绝，或密钥与已知记录不符
   rejected,
 }
 
-/// 主机密钥确认请求。界面层据此弹出确认框。
+/// @brief 主机密钥确认请求。
+///
+/// 界面层据此弹出确认框。
 class HostKeyChallenge {
+  /// @brief 构造一次主机密钥确认请求。
   const HostKeyChallenge({
     required this.hostname,
     required this.keyType,
@@ -27,96 +32,121 @@ class HostKeyChallenge {
     this.previousFingerprint,
   });
 
+  /// @brief 该主机密钥所属的主机名，即连接地址。
   final String hostname;
 
+  /// @brief 主机密钥算法类型。
+  ///
   /// 例如 ssh-ed25519、ssh-rsa、ecdsa-sha2-nistp256
   final String keyType;
 
-  /// OpenSSH 风格的 SHA256 指纹，形如 `SHA256:AbC...`
+  /// @brief OpenSSH 风格的 SHA256 指纹，形如 `SHA256:AbC...`
   final String fingerprint;
 
+  /// @brief 该主机密钥是否发生了变更。
+  ///
   /// true 表示该主机此前记录过密钥，但这次收到的密钥不同 —— 中间人风险。
   final bool changed;
 
-  /// 变更前的指纹，仅在 [changed] 为 true 时有值。
+  /// @brief 变更前的指纹，仅在 [changed] 为 true 时有值。
   final String? previousFingerprint;
 
+  /// @brief 是否为「首次见到该主机密钥」。
+  ///
   /// 对应原版 DEX 里的 `Got an unseen host key for ` / `Got a host key change for `。
   bool get isUnseen => !changed;
 }
 
-/// 已知主机存储的抽象，便于把 SSH 层与数据库解耦。
+/// @brief 已知主机存储的抽象，便于把 SSH 层与数据库解耦。
 abstract class HostKeyStore {
+  /// @brief 查询某主机已记录的密钥，没有则返回 null。
   Future<KnownHost?> find(String hostname);
 
+  /// @brief 记住某主机的密钥。
   Future<void> remember(KnownHost host);
 }
 
-/// 用 SQLite 实现的主机密钥存储。
+/// @brief 用 SQLite 实现的主机密钥存储。
 class DatabaseHostKeyStore implements HostKeyStore {
+  /// @brief 用给定的数据库实例构造存储。
   DatabaseHostKeyStore(this._db);
 
+  /// @brief 承载已知主机记录的数据库。
   final JuiceDatabase _db;
 
+  /// @brief 从本地库查询已知主机。
   @override
   Future<KnownHost?> find(String hostname) => _db.knownHost(hostname);
 
+  /// @brief 把主机密钥写入本地库。
   @override
   Future<void> remember(KnownHost host) async {
     await _db.saveKnownHost(host);
   }
 }
 
-/// 密码 / 交互式提问的回调。返回 null 表示跳过该认证方式。
+/// @brief 密码 / 交互式提问的回调。
+///
+/// 返回 null 表示跳过该认证方式。
 typedef CredentialPrompt = Future<String?> Function(String prompt, bool echo);
 
-/// 主机密钥确认回调。
+/// @brief 主机密钥确认回调。
 typedef HostKeyConfirm = Future<HostKeyVerdict> Function(HostKeyChallenge challenge);
 
-/// 连接过程中的进度反馈，供界面显示 "connecting.xml" 里的提示文案。
+/// @brief 连接过程中的进度反馈。
+///
+/// 供界面显示 "connecting.xml" 里的提示文案。
 typedef ProgressReport = void Function(String message);
 
-/// 一个已建立的 SSH 会话。
+/// @brief 一个已建立的 SSH 会话。
 ///
 /// 把 dartssh2 的 `SSHClient` + `SSHSession` 包在一起，因为原版的会话概念
 /// 同时包含"连接"和"远端 shell"两层：断开连接时两者都要清理。
 class JuiceSshSession {
+  /// @brief 私有构造：认证成功、拿到远端 shell 后由连接器创建。
   JuiceSshSession._(this._client, this._session, this._encoder);
 
+  /// @brief 底层 SSH 客户端，负责认证与通道。
   final SSHClient _client;
+  /// @brief 远端的 shell 会话通道。
   final SSHSession _session;
+  /// @brief 把输入字符串编码成字节的编码器。
   final Converter<String, List<int>> _encoder;
 
+  /// @brief 本端是否已主动关闭该会话。
   bool _closed = false;
 
+  /// @brief 会话是否已关闭（本端关闭或连接断开）。
   bool get isClosed => _closed || _client.isClosed;
 
-  /// 远端产生的原始字节流（pty 合并了 stdout 与 stderr）。
+  /// @brief 远端产生的原始字节流（pty 合并了 stdout 与 stderr）。
   Stream<Uint8List> get output => _session.stdout;
 
-  /// 会话结束（远端 shell 退出或连接断开）。
+  /// @brief 会话结束（远端 shell 退出或连接断开）。
   Future<void> get done => _session.done;
 
-  /// 把用户输入写回远端。
+  /// @brief 把用户输入写回远端。
   void write(String data) {
     if (_closed) return;
     final bytes = _encoder.convert(data);
     _session.write(Uint8List.fromList(bytes));
   }
 
-  /// 写入任意字节，供额外键行发送控制序列使用。
+  /// @brief 写入任意字节，供额外键行发送控制序列使用。
   void writeBytes(List<int> bytes) {
     if (_closed) return;
     _session.write(Uint8List.fromList(bytes));
   }
 
-  /// 通知远端终端尺寸变化。对应原版 `TerminalView.OnResizeListener`。
+  /// @brief 通知远端终端尺寸变化。
+  ///
+  /// 对应原版 `TerminalView.OnResizeListener`。
   void resize(int columns, int rows, {int pixelWidth = 0, int pixelHeight = 0}) {
     if (_closed) return;
     _session.resizeTerminal(columns, rows, pixelWidth, pixelHeight);
   }
 
-  /// 在会话中执行一条命令并取得输出，用于 Snippet 与公钥安装脚本。
+  /// @brief 在会话中执行一条命令并取得输出，用于 Snippet 与公钥安装脚本。
   Future<String> execute(String command) async {
     if (_closed) throw const SshDisconnected('会话已关闭');
     final session = await _client.execute(command);
@@ -128,7 +158,9 @@ class JuiceSshSession {
     return output;
   }
 
-  /// 拨通一条到远端 [remoteHost]:[remotePort] 的转发通道（相当于 `-L` 的单条连接）。
+  /// @brief 拨通一条到远端 [remoteHost]:[remotePort] 的转发通道。
+  ///
+  /// 相当于 `-L` 的单条连接。
   ///
   /// 注意 dartssh2 的 `forwardLocal` 返回的是**一条已建立的转发连接**，
   /// 不是监听套接字。要实现 `-L`，调用方需要自己起本地 `ServerSocket`，
@@ -148,7 +180,7 @@ class JuiceSshSession {
         localPort: localPort,
       );
 
-  /// 请求远端监听 [host]:[port] 并把接入的连接转回本地（相当于 `-R`）。
+  /// @brief 请求远端监听 [host]:[port] 并把接入的连接转回本地（相当于 `-R`）。
   ///
   /// 返回远端实际分配的端口；失败时返回 null。
   Future<SSHRemoteForward?> requestRemoteForward({
@@ -157,7 +189,7 @@ class JuiceSshSession {
   }) =>
       _client.forwardRemote(host: host, port: port);
 
-  /// 启动本地 SOCKS5 代理（相当于 `-D`）。
+  /// @brief 启动本地 SOCKS5 代理（相当于 `-D`）。
   ///
   /// 原版在中文提示里明确说明：受 Android 安全限制，动态转发**不会**
   /// 成为系统级代理，应用需要手动指向 `127.0.0.1:<port>`。
@@ -167,6 +199,7 @@ class JuiceSshSession {
   }) =>
       _client.forwardDynamic(bindHost: bindHost, bindPort: bindPort);
 
+  /// @brief 关闭会话：先关远端 shell，再关整条连接。
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
@@ -183,31 +216,36 @@ class JuiceSshSession {
   }
 }
 
-/// 建立 SSH 会话。
+/// @brief 建立 SSH 会话。
 ///
 /// 与原版一致的一点：一条连接可以挂多个身份，登录时**按顺序逐个尝试**，
 /// 直到某个身份通过认证。dartssh2 在单条连接上只尝试一次密码认证
 /// （失败即把 password 方法标记为已穷尽），因此这里对每个候选身份
 /// 重新建连来复现该语义。
 class SshConnector {
-  /// 进程内的密码缓存（键 `user@host`）。第 270 轮用户实测："常用"快速连接第一次
+  /// @brief 进程内的密码缓存（键 `user@host`）。
+  ///
+  /// 第 270 轮用户实测："常用"快速连接第一次
   /// 输了密码进了终端，下一次再连**仍然要求输密码**；预期是记住密码直接进终端。
   /// 只留在内存里（不落 SQLite，避免明文写盘）；服务器改密码时重启应用会重新提示。
   static final Map<String, String> _passwordCache = {};
 
+  /// @brief 私有构造：本类只提供静态方法。
   const SshConnector._();
 
-  /// 客户端标识。原版由原生 libssh 发布，具体字符串静态读不到，
+  /// @brief 客户端标识。
+  ///
+  /// 原版由原生 libssh 发布，具体字符串静态读不到，
   /// 这里用应用名 + 版本，属**推断值**。
   static const String clientIdent = 'JuiceSSH_3.2.2';
 
-  /// 判断是否为"凭据不对"。
+  /// @brief 判断是否为"凭据不对"。
   ///
   /// 只认 [SSHAuthFailError]（所有认证方式都试完仍失败）。
   /// [SSHAuthAbortError] 表示认证因网络等外部原因中断，不该换下一个身份重试。
   static bool _isAuthFailure(Object error) => error is SSHAuthFailError;
 
-  /// 尝试用 [identities]（按给定顺序）建立到 [connection] 的会话。
+  /// @brief 尝试用 [identities]（按给定顺序）建立到 [connection] 的会话。
   ///
   /// * [onHostKey] 负责确认主机密钥；返回 [HostKeyVerdict.rejected] 会中止连接。
   /// * [onPassword] 在没有可用身份、或服务端只接受密码时被调用，
@@ -237,6 +275,7 @@ class SshConnector {
 
     Object? lastError;
 
+    /// @brief 用一组凭据建立一次连接，并开好远端 shell。
     Future<JuiceSshSession> attempt({
       // 调用方传进来的就是 dartssh2 的 `SSHKeyPair`（见下方 `SSHKeyPair.fromPem`），
       // 这里如实收窄类型，好把它直接交给 `SSHKeyPairAgent` 做 agent 转发。
@@ -481,18 +520,23 @@ class SshConnector {
   }
 }
 
-/// 面向界面的连接失败信息。
+/// @brief 面向界面的连接失败信息。
 ///
 /// 原版在 DEX 里有几条固定文案：`Got an unseen host key for `、
 /// `Got a host key change for `、`Failed saving host key`，
 /// 以及中文的「主机密钥已被拒绝」。这里把底层异常归类到它们。
 class SshFailure implements Exception {
+  /// @brief 构造一条连接失败信息。
   const SshFailure(this.kind, this.message, {this.cause});
 
+  /// @brief 失败分类，决定界面文案与后续处理方式。
   final SshFailureKind kind;
+  /// @brief 直接给用户看的失败文案。
   final String message;
+  /// @brief 触发本次失败的底层异常，便于排查。
   final Object? cause;
 
+  /// @brief 把底层异常归类成界面可用的失败信息。
   factory SshFailure.from(Object error, Connection connection) {
     // dartssh2 在 onVerifyHostKey 返回 false 时抛 SSHHostkeyError，
     // 对应原版的中文文案「主机密钥已被拒绝」。
@@ -524,28 +568,42 @@ class SshFailure implements Exception {
     );
   }
 
+  /// @brief 直接返回给用户看的文案。
   @override
   String toString() => message;
 }
 
+/// @brief 连接失败的分类，决定界面文案与后续处理方式。
+///
+/// 取值含义（原版 DEX 里对应的几条固定路径）：
+/// * hostKeyRejected —— 主机密钥被拒绝，或与已记录的不符；
+/// * authentication —— 所有候选身份都试完仍认证失败；
+/// * timeout —— 建连或认证超时；
+/// * network —— 其它网络层错误。
 enum SshFailureKind { hostKeyRejected, authentication, timeout, network }
 
-/// 会话已关闭时执行操作。
+/// @brief 会话已关闭时执行操作。
 class SshDisconnected implements Exception {
+  /// @brief 用提示文案构造异常。
   const SshDisconnected(this.message);
 
+  /// @brief 异常携带的提示文案。
   final String message;
 
+  /// @brief 直接返回给用户看的文案。
   @override
   String toString() => message;
 }
 
-/// 主机密钥被拒绝。
+/// @brief 主机密钥被拒绝。
 class HostKeyRejected implements Exception {
+  /// @brief 用被拒绝的主机名构造异常。
   const HostKeyRejected(this.hostname);
 
+  /// @brief 被拒绝的那台主机名。
   final String hostname;
 
+  /// @brief 返回带主机名的提示文案。
   @override
   String toString() => '主机密钥已被拒绝：$hostname';
 }

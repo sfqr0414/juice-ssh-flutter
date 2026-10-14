@@ -10,7 +10,7 @@ import '../app/i18n.dart';
 import '../app/juice_colors.dart';
 import '../app/settings_controller.dart';
 
-/// PIN 锁的存取与校验。
+/// @brief PIN 锁的存取与校验。
 ///
 /// 原版把 PIN 放在 `pinlock:pin` 配置里（`Config` 的默认值表里能看到这个键），
 /// 明文与加密两种形态都由 `User.v()/User.E()` 负责；连续失败次数放在
@@ -29,35 +29,40 @@ import '../app/settings_controller.dart';
 /// `const/4 v1, 0x5`（上限 5 次）与 `const-wide/32 v4, 0x493e0`
 /// （300000ms = 5 分钟）。
 class PinLockService {
+  /// @brief 私有构造函数，单例只能由 [instance] 创建。
   PinLockService._();
 
+  /// @brief 全局单例。
   static final PinLockService instance = PinLockService._();
 
-  /// 连续失败次数上限，对应 `PinManager.b()` 里的 `const/4 v1, 0x5`。
+  /// @brief 连续失败次数上限，对应 `PinManager.b()` 里的 `const/4 v1, 0x5`。
   static const int maxAttempts = 5;
 
-  /// 锁定时长，对应 `PinManager.b()` 里的 `0x493e0`（5 分钟）。
+  /// @brief 锁定时长，对应 `PinManager.b()` 里的 `0x493e0`（5 分钟）。
   static const Duration lockoutDuration = Duration(minutes: 5);
 
-  /// 盐长度（字节）。原版没有可参照的值，这里按常见做法取 16。
+  /// @brief 盐长度（字节）。
+  ///
+  /// 原版没有可参照的值，这里按常见做法取 16。
   static const int _saltLength = 16;
 
-  /// 锁定截止时间的存放键（毫秒时间戳）。
+  /// @brief 锁定截止时间的存放键（毫秒时间戳）。
   static const String keyLockoutUntil = 'pinlock:lockout_until';
 
+  /// @brief 设置控制器单例，PIN 相关键都走它。
   SettingsController get _settings => SettingsController.instance;
 
-  /// 是否已经设置过 PIN。
+  /// @brief 是否已经设置过 PIN。
   bool get hasPin {
     final stored = _settings.pinLockPinHash;
     return stored != null && stored.isNotEmpty;
   }
 
-  /// 剩余可尝试次数；0 表示已经用满。
+  /// @brief 剩余可尝试次数；0 表示已经用满。
   int get remainingAttempts =>
       max(0, maxAttempts - _settings.pinLockFailedAttempts);
 
-  /// 锁定截止时间；不在锁定中返回 null。
+  /// @brief 锁定截止时间；不在锁定中返回 null。
   DateTime? get lockoutUntil {
     final raw = _settings.intOf(keyLockoutUntil, fallback: 0);
     if (raw <= 0) return null;
@@ -65,17 +70,19 @@ class PinLockService {
     return at.isAfter(DateTime.now()) ? at : null;
   }
 
-  /// 距离解锁还剩多久；不在锁定中返回 [Duration.zero]。
+  /// @brief 距离解锁还剩多久；不在锁定中返回 [Duration.zero]。
   Duration get lockoutRemaining {
     final at = lockoutUntil;
     if (at == null) return Duration.zero;
     return at.difference(DateTime.now());
   }
 
-  /// 是否处于锁定状态。
+  /// @brief 是否处于锁定状态。
   bool get isLockedOut => lockoutUntil != null;
 
-  /// 校验 PIN。**成功时会清零失败次数**（对应 `PinManager$a.d()` 里的
+  /// @brief 校验 PIN。
+  ///
+  /// **成功时会清零失败次数**（对应 `PinManager$a.d()` 里的
   /// `zk0.i(context, 0, 0)`）。
   Future<bool> verify(String pin) async {
     final stored = _settings.pinLockPinHash;
@@ -85,7 +92,7 @@ class PinLockService {
     return ok;
   }
 
-  /// 设置（或重设）PIN，并清零失败计数与锁定状态。
+  /// @brief 设置（或重设）PIN，并清零失败计数与锁定状态。
   Future<void> setPin(String pin) async {
     final salt = _randomSalt();
     final encoded = '${_hex(salt)}:${_hash(salt, pin)}';
@@ -93,13 +100,13 @@ class PinLockService {
     await resetFailures();
   }
 
-  /// 清除 PIN 与失败计数。
+  /// @brief 清除 PIN 与失败计数。
   Future<void> clearPin() async {
     await _settings.setPinLockPinHash(null);
     await resetFailures();
   }
 
-  /// 记录一次失败；达到上限时写入锁定截止时间。
+  /// @brief 记录一次失败；达到上限时写入锁定截止时间。
   ///
   /// 返回记录之后**剩余**的可尝试次数。
   Future<int> recordFailure() async {
@@ -112,13 +119,15 @@ class PinLockService {
     return max(0, maxAttempts - failed);
   }
 
-  /// 清零失败次数与锁定截止时间。
+  /// @brief 清零失败次数与锁定截止时间。
   Future<void> resetFailures() async {
     await _settings.setPinLockFailedAttempts(0);
     await _settings.setInt(keyLockoutUntil, 0);
   }
 
-  /// 锁定期已过则自动复位（对应 `PinManager.b()` 里
+  /// @brief 锁定期已过则自动复位。
+  ///
+  /// （对应 `PinManager.b()` 里
   /// 「`now - timeout >= 300000` 就把计数与时间戳清零」的逻辑）。
   Future<void> refreshLockout() async {
     final raw = _settings.intOf(keyLockoutUntil, fallback: 0);
@@ -129,16 +138,19 @@ class PinLockService {
 
   // ------------------------------------------------------------ 内部实现 --
 
+  /// @brief 生成 16 字节的随机盐。
   List<int> _randomSalt() {
     final random = Random.secure();
     return List<int>.generate(_saltLength, (_) => random.nextInt(256));
   }
 
+  /// @brief 计算 `salt || UTF-8(pin)` 的 SHA-256 十六进制摘要。
   String _hash(List<int> salt, String pin) {
     final input = Uint8List.fromList(<int>[...salt, ...utf8.encode(pin)]);
     return _hex(SHA256Digest().process(input));
   }
 
+  /// @brief 把字节序列转成小写十六进制字符串。
   String _hex(List<int> bytes) {
     final buffer = StringBuffer();
     for (final byte in bytes) {
@@ -147,7 +159,7 @@ class PinLockService {
     return buffer.toString();
   }
 
-  /// 比对时不提前返回，避免按字符位置泄漏信息。
+  /// @brief 比对时不提前返回，避免按字符位置泄漏信息。
   bool _matches(String pin, String stored) {
     final separator = stored.indexOf(':');
     if (separator <= 0) return false;
@@ -164,6 +176,7 @@ class PinLockService {
     return diff == 0;
   }
 
+  /// @brief 把十六进制字符串还原成字节；非法输入返回 null。
   List<int>? _unhex(String hex) {
     if (hex.isEmpty || hex.length.isOdd) return null;
     final bytes = <int>[];
@@ -176,7 +189,7 @@ class PinLockService {
   }
 }
 
-/// PIN 解锁界面。
+/// @brief PIN 解锁界面。
 ///
 /// 布局逐项对应 `res/layout/numeric_pin_prompt.xml`：
 ///
@@ -201,14 +214,17 @@ class PinLockService {
 ///   （26sp、加粗、白），副标题 `too_many_incorrect_security_lock_attempts`
 ///   （12sp、斜体、`@android:color/darker_gray`），倒计时归零后自动放行。
 class PinLockScreen extends StatefulWidget {
+  /// @brief 创建解锁界面 widget。
   const PinLockScreen({super.key, this.onUnlocked});
 
-  /// 解锁成功后的回调。调用之后界面还会把当前路由 pop(true)，
+  /// @brief 解锁成功后的回调。
+  ///
+  /// 调用之后界面还会把当前路由 pop(true)，
   /// 所以它必须像原版的 `NumericPinFragment` 一样以整屏路由的方式使用
   /// （见 [PinLockScreen.show]）。
   final VoidCallback? onUnlocked;
 
-  /// 以整屏路由弹入解锁界面，返回是否解锁成功。
+  /// @brief 以整屏路由弹入解锁界面，返回是否解锁成功。
   static Future<bool> show(BuildContext context, {VoidCallback? onUnlocked}) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -219,22 +235,26 @@ class PinLockScreen extends StatefulWidget {
     return result ?? false;
   }
 
+  /// @brief 创建解锁界面的 State。
   @override
   State<PinLockScreen> createState() => _PinLockScreenState();
 }
 
+/// @brief 解锁界面的状态：收集键盘输入、校验 PIN 与处理锁定倒计时。
 class _PinLockScreenState extends State<PinLockScreen> {
+  /// @brief PIN 服务单例，负责校验与失败计数。
   final PinLockService _service = PinLockService.instance;
 
-  /// 已输入的数字。
+  /// @brief 已输入的数字。
   String _pin = '';
 
-  /// 是否处于锁定态。
+  /// @brief 是否处于锁定态。
   bool _lockedOut = false;
 
-  /// 锁定倒计时（每秒刷新一次）。
+  /// @brief 锁定倒计时（每秒刷新一次）。
   Timer? _countdown;
 
+  /// @brief 初始化：判定是否已在锁定中并启动倒计时。
   @override
   void initState() {
     super.initState();
@@ -243,13 +263,14 @@ class _PinLockScreenState extends State<PinLockScreen> {
     unawaited(_refreshLockout());
   }
 
+  /// @brief 释放倒计时定时器。
   @override
   void dispose() {
     _countdown?.cancel();
     super.dispose();
   }
 
-  /// 上一次锁定期已过就复位计数（`PinManager.b()` 的同一逻辑）。
+  /// @brief 上一次锁定期已过就复位计数（`PinManager.b()` 的同一逻辑）。
   Future<void> _refreshLockout() async {
     await _service.refreshLockout();
     if (!mounted || !_lockedOut) return;
@@ -257,6 +278,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
     setState(() => _lockedOut = false);
   }
 
+  /// @brief 启动每秒刷新的锁定倒计时，结束后清空输入。
   void _startCountdown() {
     _countdown?.cancel();
     _countdown = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -278,17 +300,20 @@ class _PinLockScreenState extends State<PinLockScreen> {
     });
   }
 
+  /// @brief 追加一个数字，长度上限 255。
   void _append(String digit) {
     // 原版 `cj0$d` 的上限是 0xff。
     if (_pin.length >= 255) return;
     setState(() => _pin += digit);
   }
 
+  /// @brief 删除最后一个已输入的数字。
   void _backspace() {
     if (_pin.isEmpty) return;
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
   }
 
+  /// @brief 提交输入：校验通过则解锁，否则记一次失败。
   Future<void> _submit() async {
     final s = context.s;
     if (_service.isLockedOut) return;
@@ -322,6 +347,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
     );
   }
 
+  /// @brief 构建解锁页：锁定态显示倒计时，否则显示 PIN 输入。
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -332,7 +358,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
     );
   }
 
-  /// 解锁输入界面（`numeric_pin_prompt.xml`）。
+  /// @brief 解锁输入界面（`numeric_pin_prompt.xml`）。
   Widget _buildPrompt(BuildContext context) {
     return _PinPromptBody(
       message: context.s('enter_your_pin_to_unlock'),
@@ -345,7 +371,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
     );
   }
 
-  /// 锁定界面（`lockout.xml` 的权重 1.8 / 2.0 / 1.8）。
+  /// @brief 锁定界面（`lockout.xml` 的权重 1.8 / 2.0 / 1.8）。
   Widget _buildLockout(BuildContext context) {
     final s = context.s;
     final remaining = _service.lockoutRemaining;
@@ -395,6 +421,8 @@ class _PinLockScreenState extends State<PinLockScreen> {
     );
   }
 
+  /// @brief 把剩余锁定时间格式化成 "In N min."。
+  ///
   /// 近似 Android `DateUtils.getRelativeTimeSpanString(now + remaining + 60000)`：
   /// 先补足一分钟再按分钟四舍五入，得到 "In N min."。
   String _relativeTime(Duration remaining) {
@@ -403,16 +431,17 @@ class _PinLockScreenState extends State<PinLockScreen> {
   }
 }
 
-/// 设置新 PIN 界面。
+/// @brief 设置新 PIN 界面。
 ///
 /// 原版这条路径就是同一个 `cj0`（`NumericPinFragment`）的 mode 1 分支：
 /// 提示文案换成 `please_set_a_pin`，按 OK 直接把输入写进 `pinlock:pin`
 /// （见 `cj0$c.onClick` 的 `User.E(activity, text)`），**没有二次确认步骤**。
 /// 写完之后 `xk0$a.d()` 才把 `pinlock:enabled` 置为 true。
 class PinSetupScreen extends StatefulWidget {
+  /// @brief 创建 PIN 设置页 widget。
   const PinSetupScreen({super.key});
 
-  /// 弹出入 PIN 设置页，返回用户是否成功设置了 PIN。
+  /// @brief 弹出入 PIN 设置页，返回用户是否成功设置了 PIN。
   static Future<bool> show(BuildContext context) async {
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -423,25 +452,32 @@ class PinSetupScreen extends StatefulWidget {
     return result ?? false;
   }
 
+  /// @brief 创建 PIN 设置页的 State。
   @override
   State<PinSetupScreen> createState() => _PinSetupScreenState();
 }
 
+/// @brief PIN 设置页的状态：收集输入并写入新 PIN。
 class _PinSetupScreenState extends State<PinSetupScreen> {
+  /// @brief PIN 服务单例，用于写入新 PIN。
   final PinLockService _service = PinLockService.instance;
 
+  /// @brief 已输入的数字。
   String _pin = '';
 
+  /// @brief 追加一个数字，长度上限 255。
   void _append(String digit) {
     if (_pin.length >= 255) return;
     setState(() => _pin += digit);
   }
 
+  /// @brief 删除最后一个已输入的数字。
   void _backspace() {
     if (_pin.isEmpty) return;
     setState(() => _pin = _pin.substring(0, _pin.length - 1));
   }
 
+  /// @brief 提交输入：非空则保存为新 PIN 并返回。
   Future<void> _submit() async {
     final s = context.s;
     if (_pin.isEmpty) {
@@ -457,6 +493,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     Navigator.of(context).pop(true);
   }
 
+  /// @brief 构建 PIN 设置页（含右上角取消按钮）。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -491,28 +528,33 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   }
 }
 
-/// PIN 提示页的公共骨架（`numeric_pin_prompt.xml` 的上半部分）：
+/// @brief PIN 提示页的公共骨架（`numeric_pin_prompt.xml` 上半部分）。
+///
 /// 顶部提示 + 中间左右留白的密码点阵 + 键盘。
 ///
 /// 原版整页固定尺寸、不滚动；这里套一层 [SingleChildScrollView]，
 /// 免得小窗口下溢出，同时用 [ConstrainedBox] 保住竖直居中。
 class _PinPromptBody extends StatelessWidget {
+  /// @brief 创建 PIN 提示页骨架 widget。
   const _PinPromptBody({
     required this.message,
     required this.pinLength,
     required this.keypad,
   });
 
-  /// 顶部提示文案（解锁是 `enter_your_pin_to_unlock`，设置新 PIN 是
+  /// @brief 顶部提示文案。
+  ///
+  /// 解锁是 `enter_your_pin_to_unlock`，设置新 PIN 是
   /// `please_set_a_pin`）。
   final String message;
 
-  /// 已输入的位数；用 [String] 乘出对应个数的 `•`。
+  /// @brief 已输入的位数；用 [String] 乘出对应个数的 `•`。
   final int pinLength;
 
-  /// 数字键盘。
+  /// @brief 数字键盘。
   final Widget keypad;
 
+  /// @brief 构建提示 + 密码点阵 + 键盘的竖直布局。
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -565,69 +607,75 @@ class _PinPromptBody extends StatelessWidget {
   }
 }
 
-/// `numeric_pin_prompt.xml` 里的固定尺寸与颜色。
+/// @brief `numeric_pin_prompt.xml` 里的固定尺寸与颜色。
 abstract final class _PinMetrics {
-  /// 顶栏提示与密码显示区的高度：`56.0dp`。
+  /// @brief 顶栏提示与密码显示区的高度：`56.0dp`。
   static const double messageHeight = 56;
 
-  /// 密码显示区宽度：`232.0dp`。
+  /// @brief 密码显示区宽度：`232.0dp`。
   static const double displayWidth = 232;
 
-  /// 键盘键尺寸：`56.0dp`。
+  /// @brief 键盘键尺寸：`56.0dp`。
   static const double keySize = 56;
 
-  /// 键外边距：`layout_margin="16.0dp"`。
+  /// @brief 键外边距：`layout_margin="16.0dp"`。
   static const double keyMargin = 16;
 
-  /// 提示文案字号。
+  /// @brief 提示文案字号。
   ///
   /// 原版 `@id/message` 没写 `textSize`、也没写样式，于是走主题的
   /// `?android:textAppearance`（`Theme.Material` → `TextAppearance.Material.Body1`
   /// = 14sp）。框架资源不在 APK 里，这里是按该链路推断的值。
   static const double promptTextSize = 14;
 
-  /// 密码显示区字号：`24.0sp`。
+  /// @brief 密码显示区字号：`24.0sp`。
   static const double displayTextSize = 24;
 
-  /// 键面字号：`20.0sp`。
+  /// @brief 键面字号：`20.0sp`。
   static const double keyTextSize = 20;
 
-  /// 键面颜色：`@color/primary_bold`。
+  /// @brief 键面颜色：`@color/primary_bold`。
   static const Color foreground = Color(0xFFFFE24C);
 
-  /// 按下时的描边色：`@color/primary_bold_transparent`。
+  /// @brief 按下时的描边色：`@color/primary_bold_transparent`。
   static const Color pressedRing = Color(0x55FFE24C);
 
-  /// 锁定页标题色：`@android:color/white`。
+  /// @brief 锁定页标题色：`@android:color/white`。
   static const Color lockoutTitle = Color(0xFFFFFFFF);
 
-  /// 锁定页副标题色：`@android:color/darker_gray`。
+  /// @brief 锁定页副标题色：`@android:color/darker_gray`。
   static const Color lockoutSubtitle = Color(0xFF444444);
 
-  /// 锁定页标题字号：`26.0sp`。
+  /// @brief 锁定页标题字号：`26.0sp`。
   static const double lockoutTitleSize = 26;
 
-  /// 锁定页副标题字号：`12.0sp`。
+  /// @brief 锁定页副标题字号：`12.0sp`。
   static const double lockoutSubtitleSize = 12;
 
-  /// 锁定页图标尺寸：`100.0dp`。
+  /// @brief 锁定页图标尺寸：`100.0dp`。
   static const double lockoutIconSize = 100;
 }
 
-/// 数字键盘：4 × 3，对应 `numeric_pin_prompt.xml` 的 `TableLayout`。
+/// @brief 数字键盘：4 × 3，对应 `numeric_pin_prompt.xml` 的 `TableLayout`。
 class _PinKeypad extends StatelessWidget {
+  /// @brief 创建数字键盘 widget。
   const _PinKeypad({
     required this.onDigit,
     required this.onBackspace,
     required this.onSubmit,
   });
 
+  /// @brief 数字键回调。
   final ValueChanged<String> onDigit;
+  /// @brief 退格键回调。
   final VoidCallback onBackspace;
+  /// @brief 确认键（OK）回调。
   final VoidCallback onSubmit;
 
+  /// @brief 构建 4 × 3 的数字键盘。
   @override
   Widget build(BuildContext context) {
+    /// @brief 把子控件包成 56dp 的键位格。
     Widget cell(Widget child) => Padding(
           padding: const EdgeInsets.all(_PinMetrics.keyMargin),
           child: SizedBox(
@@ -637,6 +685,7 @@ class _PinKeypad extends StatelessWidget {
           ),
         );
 
+    /// @brief 生成一个数字键。
     Widget digit(String value) => cell(
           _PinKey(
             semanticLabel: value,
@@ -704,31 +753,42 @@ class _PinKeypad extends StatelessWidget {
   }
 }
 
-/// 单个键：`@drawable/pin_button` 的 4dp 椭圆描边 + 选中/按下时的
-/// `primary_bold_transparent` 描边。
+/// @brief 单个键：4dp 椭圆描边，按下时换成半透明描边。
+///
+/// 描边色见 `@drawable/pin_button`：常态 `primary_bold`，
+/// 按下 `primary_bold_transparent`。
 class _PinKey extends StatefulWidget {
+  /// @brief 创建单个按键 widget。
   const _PinKey({
     required this.child,
     required this.onPressed,
     this.semanticLabel,
   });
 
+  /// @brief 键面内容（数字、橡皮擦图标或 OK）。
   final Widget child;
+  /// @brief 点击回调。
   final VoidCallback onPressed;
+  /// @brief 无障碍语义标签。
   final String? semanticLabel;
 
+  /// @brief 创建按键的 State。
   @override
   State<_PinKey> createState() => _PinKeyState();
 }
 
+/// @brief 按键状态：只记录是否处于按下态。
 class _PinKeyState extends State<_PinKey> {
+  /// @brief 是否正在按下（决定描边色）。
   bool _pressed = false;
 
+  /// @brief 更新按下态，值未变时不触发重建。
   void _setPressed(bool value) {
     if (_pressed == value) return;
     setState(() => _pressed = value);
   }
 
+  /// @brief 构建圆形描边按键。
   @override
   Widget build(BuildContext context) {
     return Semantics(

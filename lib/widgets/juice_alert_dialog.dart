@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app/juice_theme.dart';
 
-/// AppCompat `AlertDialog` 的度量还原。
+/// @brief AppCompat `AlertDialog` 的度量还原。
 ///
 /// 原版用的是 `androidx.appcompat.app.AlertDialog`，布局是三段结构
 /// `res/layout/abc_alert_dialog_material.xml`：
@@ -21,7 +21,7 @@ import '../app/juice_theme.dart';
 ///
 /// 长度单位说明：420dpi，1dp = 2.625px。注释里同时给出 px 便于对照截图。
 abstract final class JuiceDialogMetrics {
-  /// 9-patch 背景的内缩 = `appcompat_dialog_background_inset`（16dp）。
+  /// @brief 9-patch 背景的内缩 = `appcompat_dialog_background_inset`（16dp）。
   ///
   /// 原版对话框**窗口**是 1024×765（`[28,850][1052,1615]`），但**可见白底**
   /// 只有 `[70,892][1010,1573]` = 940×681 —— 差的正好是四周各 16dp，
@@ -30,48 +30,52 @@ abstract final class JuiceDialogMetrics {
   /// 阴影交给 Flutter 自己的 elevation 画。
   static const double backgroundInset = 16;
 
-  /// 窗口宽度 = 屏幕的 95%（`abc_dialog_min_width_minor` = 95.00001%）。
+  /// @brief 窗口宽度 = 屏幕的 95%（`abc_dialog_min_width_minor` = 95.00001%）。
   /// 实测 1080 × 0.95 = 1026px ≈ 1024px ✔
   static const double windowWidthFraction = 0.95;
 
-  /// 窗口左右外边距 = (屏幕宽 − 95% 屏幕宽)/2 + 9-patch 内缩。
+  /// @brief 窗口左右外边距 = (屏幕宽 − 95% 屏幕宽)/2 + 9-patch 内缩。
   static double horizontalInsetFor(double screenWidth) =>
       screenWidth * (1 - windowWidthFraction) / 2 + backgroundInset;
 
-  /// 标题内边距：左 24dp = `?dialogPreferredPadding`
+  /// @brief 标题内边距：左 24dp = `?dialogPreferredPadding`
   /// （= `abc_dialog_padding_material`）；实测标题盒左缘 133px，
   /// 133 − 70(面板左) = 63px = 24dp ✔
   static const double titlePaddingLeft = 24;
 
-  /// 标题上内边距 18dp = `abc_dialog_padding_top_material`；
+  /// @brief 标题上内边距 18dp = `abc_dialog_padding_top_material`；
   /// 实测 939 − 892(面板顶) = 47px = 17.9dp ✔
   /// （`title_template` 节点实测 `[70,892][1010,1010]`，高 118px = 47 + 71 ✔）
   static const double titlePaddingTop = 18;
 
-  /// 标题下内边距。原版这里是 `@id/titleDividerNoCustom`：一个
+  /// @brief 标题下内边距。原版这里是 `@id/titleDividerNoCustom`：一个
   /// `android.widget.Space`，高 `abc_dialog_title_divider_material` = 8dp，
   /// **透明**（实测 y1010..1031 整条 100% 纯色，没有任何分隔线像素）。
   static const double titlePaddingBottom = 8;
 
-  /// 标题字号：`?android:windowTitleStyle` = `TextAppearance.AppCompat.Title`，
+  /// @brief 标题字号：`?android:windowTitleStyle` =
+  /// `TextAppearance.AppCompat.Title`，
   /// 20sp。实测文字盒 71px = 20sp × 1.362 ✔（和 ListView 行盒同一个系数）
   static const double titleFontSize = 20;
 
-  /// 内容左右内边距：**0**。实测列表 `[70,1031][1010,1409]` 与面板同宽 ✔
+  /// @brief 内容左右内边距：**0**。实测列表 `[70,1031][1010,1409]` 与面板同宽 ✔
   /// （老实现写 16dp，是把 9-patch 内缩算了两遍）
   static const double contentPaddingHorizontal = 0;
 
-  /// 按钮栏内边距。`abc_alert_dialog_button_bar_material.xml` 里
+  /// @brief 按钮栏内边距。`abc_alert_dialog_button_bar_material.xml` 里
   /// `ButtonBarLayout` 自带 12dp 左右、4dp 上下：
   /// * 右：面板右 1010 − 按钮右 978 = 32px = 12.2dp ✔
   /// * 上：1420 − 1409 = 11px = 4.2dp ✔
   /// * 下：1573 − 1562 = 11px = 4.2dp ✔
   static const double actionsPaddingLeft = 0;
+  /// @brief 按钮栏右内边距 12dp（ButtonBarLayout 自带）。
   static const double actionsPaddingRight = 12;
+  /// @brief 按钮栏上内边距 4dp（ButtonBarLayout 自带）。
   static const double actionsPaddingTop = 4;
+  /// @brief 按钮栏下内边距 4dp（ButtonBarLayout 自带）。
   static const double actionsPaddingBottom = 4;
 
-  /// 按钮（`?buttonBarButtonStyle`）。API 28+ 被 `values-v28/styles.xml`
+  /// @brief 按钮（`?buttonBarButtonStyle`）。API 28+ 被 `values-v28/styles.xml`
   /// 覆盖成 `Widget.MaterialComponents.Button.TextButton.Dialog`：
   /// 最小宽度 `mtrl_btn_dialog_btn_min_width` = 64dp（= 168px，实测
   /// SAVE 按钮正好 168px ✔）。实测按钮盒高 142px，两个按钮**紧贴无间隙**
@@ -81,33 +85,39 @@ abstract final class JuiceDialogMetrics {
   /// (202 − 140) / 2 = 31px = 11.8dp ✔。写 8dp（`mtrl_btn_text_btn_padding_*`）
   /// 会让文字整体右移 11px，实测对不上。
   static const double buttonMinWidth = 64;
+  /// @brief 按钮左右内边距 12dp（实测，不是 Material 默认的 8dp）。
   static const double buttonPaddingHorizontal = 12;
+  /// @brief 按钮高度，实测 142px。
   static const double buttonHeight = 142 / 2.625;
+  /// @brief 按钮字号 14sp。
   static const double buttonFontSize = 14;
 
-  /// 单选列表行（`res/layout/select_dialog_singlechoice_material.xml`）：
+  /// @brief 单选列表行（`res/layout/select_dialog_singlechoice_material.xml`）：
   /// `minHeight = ?listPreferredItemHeightSmall` = 48dp（实测 126px ✔）、
   /// 起始内边距 `abc_select_dialog_padding_start_material` = 20dp、
   /// `android:drawablePadding` = 20dp，文字 16sp
   /// （`?android:textAppearanceMedium`）。
   static const double listItemHeight = 48;
+  /// @brief 列表行起始内边距 20dp（abc_select_dialog_padding_start_material）。
   static const double listItemPaddingStart = 20;
+  /// @brief 标记与文字之间的间隔 20dp（android:drawablePadding）。
   static const double listItemDrawablePadding = 20;
 
-  /// 单选标记的**槽宽**。`android:drawableLeft` 的固有宽度实测 32dp：
+  /// @brief 单选标记的**槽宽**。`android:drawableLeft` 的固有宽度实测 32dp：
   /// 格子左缘 122px = 70 + 20dp(52px)，文字起于 259px
   /// = 122 + 32dp(84px) + 20dp(52px) + 字形左边距 ✔
   static const double listItemIndicatorWidth = 32;
 
-  /// 单选标记本身的直径。实测选中/未选中标记的墨迹都是 52px = 19.8dp，
+  /// @brief 单选标记本身的直径。实测选中/未选中标记的墨迹都是 52px = 19.8dp，
   /// 且在 32dp 槽里**居中**（左右各 16px ≈ 6.1dp）。
   static const double listItemIndicatorSize = 20;
 
-  /// 单选标记的描边宽度与选中时的内点直径（Material 单选按钮规格）。
+  /// @brief 单选标记的描边宽度与选中时的内点直径（Material 单选按钮规格）。
   static const double listItemIndicatorStroke = 2;
+  /// @brief 选中时内点直径 10dp。
   static const double listItemIndicatorDot = 10;
 
-  /// 列表文字字号。
+  /// @brief 列表文字字号。
   ///
   /// 布局文件写的是 `?android:textAppearanceMedium`（平台主题下是 16sp），
   /// 但**实测是 18sp**：拿 Roboto 的字形度量反推，
@@ -120,11 +130,11 @@ abstract final class JuiceDialogMetrics {
   /// 那一支的 Medium 历来是 18sp）。
   static const double listItemFontSize = 18;
 
-  /// 对话框圆角：`abc_dialog_corner_radius_material` = 2dp。
+  /// @brief 对话框圆角：`abc_dialog_corner_radius_material` = 2dp。
   static const double cornerRadius = 2;
 }
 
-/// 对话框配色。
+/// @brief 对话框配色。
 ///
 /// **不是** JuiceSSH 自己的 `text_*` 资源 —— `AlertDialog` 会被
 /// `ThemeOverlay.AppCompat.Dialog.Alert` 包一层，文字色回到框架取值。
@@ -142,6 +152,7 @@ abstract final class JuiceDialogMetrics {
 /// 60% 黑叠白，`#C7C7C7` 是 `@android:color/secondary_text_dark`
 /// （`#B3FFFFFF`，70% 白）叠在 `#424242` 上的结果 —— 三个都能对上公式。
 class JuiceDialogColors {
+  /// @brief 用五个颜色分量构造一套对话框配色。
   const JuiceDialogColors({
     required this.background,
     required this.title,
@@ -150,14 +161,19 @@ class JuiceDialogColors {
     required this.accent,
   });
 
+  /// @brief 对话框底色（亮色 #FFFFFF / 暗色 #424242）。
   final Color background;
+  /// @brief 标题文字色。
   final Color title;
+  /// @brief 正文与列表文字色。
   final Color body;
+  /// @brief 未选中单选标记的颜色（60% 黑 / 70% 白）。
   final Color indicatorUnchecked;
 
-  /// 选中标记与按钮文字共用的强调色（= `@color/accent_bold`）。
+  /// @brief 选中标记与按钮文字共用的强调色（= `@color/accent_bold`）。
   final Color accent;
 
+  /// @brief 按当前主题取一整套对话框配色。
   factory JuiceDialogColors.of(BuildContext context) {
     final palette = context.palette;
     return JuiceDialogColors(
@@ -170,11 +186,11 @@ class JuiceDialogColors {
     );
   }
 
-  /// 遮罩。实测亮色下背景 `#FFFFFF` 被压到 `#666666`
+  /// @brief 遮罩。实测亮色下背景 `#FFFFFF` 被压到 `#666666`
   /// （1 − 102/255 = 0.6），即 60% 黑。
   static const Color barrier = Color(0x99000000);
 
-  /// 正文样式：`@android:id/message` 用的是
+  /// @brief 正文样式：`@android:id/message` 用的是
   /// `TextAppearance.AppCompat.Subhead` = 16sp。
   ///
   /// 行高用 Roboto 的**自然**行高 1.171em，不是别处那个 1.362em：
@@ -187,7 +203,7 @@ class JuiceDialogColors {
       TextStyle(fontSize: 16, height: 1.171, color: body);
 }
 
-/// 对话框外壳，还原 AppCompat 的三段布局与边距。
+/// @brief 对话框外壳，还原 AppCompat 的三段布局与边距。
 ///
 /// 用法与 `AlertDialog` 一致，但 [title] 是字符串、[actions] 用
 /// [JuiceDialogAction]（已按实测高度/最小宽度/大写处理）。
@@ -198,6 +214,7 @@ class JuiceDialogColors {
 /// （只剩遮罩）。自己用 [Dialog] + `Column` 反而更贴合原版的三段结构，
 /// 边距也能逐项写死。
 class JuiceAlertDialog extends StatelessWidget {
+  /// @brief 构造「标题 + 内容 + 按钮」三段式对话框外壳。
   const JuiceAlertDialog({
     super.key,
     this.title,
@@ -207,11 +224,14 @@ class JuiceAlertDialog extends StatelessWidget {
     this.showTitleDivider = true,
   });
 
+  /// @brief 标题文案；null 表示不画标题行。
   final String? title;
+  /// @brief 内容区：列表或正文。
   final Widget? content;
+  /// @brief 右下角按钮栏，按传入顺序从左到右排。
   final List<Widget> actions;
 
-  /// 标题下的 8dp 空白（`@id/titleDividerNoCustom`）是否保留。
+  /// @brief 标题下的 8dp 空白（`@id/titleDividerNoCustom`）是否保留。
   ///
   /// 实测规则：**用了 custom view 就没有这一条**。
   /// 主题选择框（title + ListView）里它是可见节点
@@ -219,21 +239,21 @@ class JuiceAlertDialog extends StatelessWidget {
   /// 的 `topPanel` 到 1009 就直接接 `customPanel`，没有这 21px。
   final bool showTitleDivider;
 
-  /// 内容内边距。默认按**列表**场景（左右各 16dp，等于只有背景内缩）；
+  /// @brief 内容内边距。默认按**列表**场景（左右各 16dp，等于只有背景内缩）；
   /// **消息框**要传 [messageContentPadding]，因为
   /// `abc_alert_dialog_material.xml` 里 `@android:id/message` 自己带
   /// `?dialogPreferredPadding` = 24dp。两者实测不同，别混。
   final EdgeInsets? contentPadding;
 
-  /// 消息框（`@android:id/message`）的内容内边距。
+  /// @brief 消息框（`@android:id/message`）的内容内边距。
   static const EdgeInsets messageContentPadding =
       EdgeInsets.symmetric(horizontal: 24);
 
-  /// 上下留白（原版由 AlertDialog 窗口自己按屏幕高度决定，这里取一个
+  /// @brief 上下留白（原版由 AlertDialog 窗口自己按屏幕高度决定，这里取一个
   /// 不会碰到边的小值；真正决定纵向位置的是 `insetPadding` 的上下不对称）。
   static const double _verticalMargin = 24;
 
-  /// 纵向居中的修正量。
+  /// @brief 纵向居中的修正量。
   ///
   /// 第 67 轮实测（420dpi，字号对话框，整行 `#424242` 面板色扫描）：
   /// 原版面板 y 730..1733（高 1004px，中心 **1231.5** = 应用窗口中心
@@ -245,6 +265,7 @@ class JuiceAlertDialog extends StatelessWidget {
   /// 所以补在**下**边距上时要补两倍，即 2 × 24.6 = 49.2dp。
   static const double _bottomCenterCorrection = 49.2;
 
+  /// @brief 按「标题 / 内容 / 按钮」三段拼出对话框外壳。
   @override
   Widget build(BuildContext context) {
     final colors = JuiceDialogColors.of(context);
@@ -341,18 +362,22 @@ class JuiceAlertDialog extends StatelessWidget {
   }
 }
 
-/// 对话框按钮。可点区域 64dp×54.1dp，文案全大写
+/// @brief 对话框按钮。可点区域 64dp×54.1dp，文案全大写
 /// （Material 按钮的 `android:textAllCaps` 默认为真）。
 class JuiceDialogAction extends StatelessWidget {
+  /// @brief 用按钮文案与点击回调构造一个对话框按钮。
   const JuiceDialogAction({
     super.key,
     required this.label,
     required this.onPressed,
   });
 
+  /// @brief 按钮文案，渲染时统一转大写。
   final String label;
+  /// @brief 点击回调；null 表示按钮禁用。
   final VoidCallback? onPressed;
 
+  /// @brief 构建 64dp×54.1dp 的大写文字按钮。
   @override
   Widget build(BuildContext context) {
     final colors = JuiceDialogColors.of(context);
@@ -391,9 +416,10 @@ class JuiceDialogAction extends StatelessWidget {
   }
 }
 
-/// 单选列表行：`[20dp 起始内边距][32dp 标记槽][20dp 间隔][文字][24dp]`，
+/// @brief 单选列表行：`[20dp 起始内边距][32dp 标记槽][20dp 间隔][文字][24dp]`，
 /// 行高 48dp，文字 16sp。整行可点。
 class JuiceDialogListItem extends StatelessWidget {
+  /// @brief 用行文案、选中状态与点击回调构造一行单选项。
   const JuiceDialogListItem({
     super.key,
     required this.label,
@@ -401,10 +427,14 @@ class JuiceDialogListItem extends StatelessWidget {
     required this.onTap,
   });
 
+  /// @brief 行文字。
   final String label;
+  /// @brief 是否为当前选中行。
   final bool checked;
+  /// @brief 点击整行的回调。
   final VoidCallback onTap;
 
+  /// @brief 构建 48dp 高的单选列表行。
   @override
   Widget build(BuildContext context) {
     final colors = JuiceDialogColors.of(context);
@@ -443,13 +473,17 @@ class JuiceDialogListItem extends StatelessWidget {
   }
 }
 
-/// Material 单选按钮：外圈 20dp（描边 2dp），选中时内点 10dp。
+/// @brief Material 单选按钮：外圈 20dp（描边 2dp），选中时内点 10dp。
 class _JuiceDialogRadio extends StatelessWidget {
+  /// @brief 用选中状态与配色构造一个单选标记。
   const _JuiceDialogRadio({required this.checked, required this.colors});
 
+  /// @brief 是否选中；选中时画内点。
   final bool checked;
+  /// @brief 当前主题的对话框配色。
   final JuiceDialogColors colors;
 
+  /// @brief 构建 20dp 的 Material 单选圈。
   @override
   Widget build(BuildContext context) {
     final color = checked ? colors.accent : colors.indicatorUnchecked;
@@ -481,11 +515,12 @@ class _JuiceDialogRadio extends StatelessWidget {
   }
 }
 
-/// 单选列表对话框：标题 + 若干 48dp 行 + 一个 CANCEL。
+/// @brief 单选列表对话框：标题 + 若干 48dp 行 + 一个 CANCEL。
 ///
 /// 对应原版 `ListDBPreference` 弹出的 `AlertDialog`
 /// （`setSingleChoiceItems` + 负向按钮）。
 class JuiceListDialog extends StatelessWidget {
+  /// @brief 用标题、候选条目与当前下标构造单选列表对话框。
   const JuiceListDialog({
     super.key,
     required this.title,
@@ -495,14 +530,20 @@ class JuiceListDialog extends StatelessWidget {
     this.maxVisibleItems = 7,
   });
 
+  /// @brief 对话框标题。
   final String title;
+  /// @brief 候选条目文案。
   final List<String> entries;
+  /// @brief 当前选中项下标。
   final int selectedIndex;
+  /// @brief 负向按钮文案（原版是 CANCEL）。
   final String cancelLabel;
 
-  /// 超过这个条数就让列表自己滚（原版由 `AlertController` 按屏幕高度决定）。
+  /// @brief 超过这个条数就让列表自己滚（原版由 `AlertController` 按屏幕高度决定）
+  /// 。
   final int maxVisibleItems;
 
+  /// @brief 构建 标题 + 单选列表 + CANCEL 的对话框。
   @override
   Widget build(BuildContext context) {
     final itemCount = entries.length;

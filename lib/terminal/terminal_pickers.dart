@@ -5,7 +5,7 @@ import '../widgets/juice_alert_dialog.dart';
 import 'terminal_fonts.dart';
 import 'terminal_themes.dart';
 
-/// 终端配色方案与字体的选择列表。
+/// @brief 终端配色方案与字体的选择列表。
 ///
 /// 条目布局严格按原版：
 /// * 配色方案 —— `res/layout/terminal_theme_item.xml`：左侧名称
@@ -17,19 +17,21 @@ import 'terminal_themes.dart';
 ///
 /// 字体条目按原版习惯用**该字体自身**渲染，这样能直接看出字形差异。
 class TerminalPickers {
+  /// @brief 私有构造：本类只提供静态方法。
   const TerminalPickers._();
 
-  /// 色块尺寸，来自 `terminal_theme_item.xml`。
+  /// @brief 色块尺寸，来自 `terminal_theme_item.xml`。
   static const double swatchWidth = 24;
+  /// @brief 单个色块的高度（24×8dp 里的 8dp）。
   static const double swatchHeight = 8;
 
-  /// 条目高度，来自两个布局里 TextView 的 `48.0dp`。
+  /// @brief 条目高度，来自两个布局里 TextView 的 `48.0dp`。
   static const double itemHeight = 48;
 
-  /// 左右留白，来自两个布局的 `paddingLeft/Right="16.0dp"`。
+  /// @brief 左右留白，来自两个布局的 `paddingLeft/Right="16.0dp"`。
   static const double itemPadding = 16;
 
-  /// 配色方案选择框。返回选中的索引；取消返回 null。
+  /// @brief 配色方案选择框。返回选中的索引；取消返回 null。
   static Future<int?> pickTheme(BuildContext context, int current) {
     final s = context.s;
     return showDialog<int>(
@@ -64,7 +66,7 @@ class TerminalPickers {
     );
   }
 
-  /// 字体选择框。返回选中的显示名；取消返回 null。
+  /// @brief 字体选择框。返回选中的显示名；取消返回 null。
   static Future<String?> pickFont(BuildContext context, String current) {
     final s = context.s;
     return showDialog<String>(
@@ -117,8 +119,9 @@ class TerminalPickers {
   }
 }
 
-/// 单条配色方案。
+/// @brief 单条配色方案。
 class _ThemeRow extends StatelessWidget {
+  /// @brief 构造一行配色方案。
   const _ThemeRow({
     required this.index,
     required this.name,
@@ -126,16 +129,22 @@ class _ThemeRow extends StatelessWidget {
     required this.onTap,
   });
 
+  /// @brief 方案下标，即 `terminal:theme` 的取值。
   final int index;
+  /// @brief 方案显示名。
   final String name;
+  /// @brief 是否为当前选中的方案。
   final bool selected;
+  /// @brief 点按该行的回调，通常用于返回选中项。
   final VoidCallback onTap;
 
+  /// @brief 构建一行：名称在左，色块网格在右。
   @override
   Widget build(BuildContext context) {
     final swatches = JuiceTerminalThemes.swatches(index);
 
     // 名称在左、色块网格在右；网格是 4 列 × 2 行，每块 24×8dp。
+    /// @brief 构造色块网格的一行（4 个色块）。
     Widget gridRow(int start) => Padding(
           padding: EdgeInsets.only(
             bottom: start == 0 ? 4 : 0,

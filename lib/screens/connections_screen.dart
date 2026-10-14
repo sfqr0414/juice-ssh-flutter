@@ -12,43 +12,54 @@ import 'connection_editor_screen.dart';
 import 'groups_screen.dart';
 import '../widgets/juice_popup_menu.dart';
 
-/// 连接列表 —— `AddressBookActivity` 的第一个标签页。
+/// @brief 连接列表 —— `AddressBookActivity` 的第一个标签页。
 ///
 /// 数据来源与原版一致：`connection` 表 + `connectiongroup` 分组 +
 /// `connectionidentity` 多对多关联（用来取用户名）+ `connectioncounter`
 /// 使用次数。
 ///
-/// 行内的副标题在反编译资源里查不到固定模板（原版在 Java 里拼），
-/// 这里按 `用户名@地址:端口` 与 `connected_x_times` 系列文案拼装，
-/// **属于推断**，待与真机对照后校正。
+/// 行内副标题：第 70 轮实测推翻了"按 `用户名@地址:端口` 与 `connected_x_times`
+/// 拼装"的早期推断 —— 原版连接列表行里**没有**这段文案，实际显示的是
+/// **关联身份的显示名**（见 `_subtitleFor` / `_identityLabelFor`）。
 class ConnectionsScreen extends StatefulWidget {
+  /// @brief 创建连接列表页 widget。
   const ConnectionsScreen({super.key});
 
+  /// @brief 创建连接列表页的状态对象。
   @override
   State<ConnectionsScreen> createState() => _ConnectionsScreenState();
 }
 
+/// @brief 连接列表页的状态：分组折叠与身份关联缓存。
 class _ConnectionsScreenState extends State<ConnectionsScreen> {
+  /// @brief 数据库单例。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 全部连接，按数据库返回顺序展示。
   List<Connection> _connections = const [];
+  /// @brief 全部真实分组（不含后追加的 All 伪分组）。
   List<ConnectionGroup> _groups = const [];
+  /// @brief 全部身份，用于解析连接行的副标题。
   List<Identity> _identities = const [];
+  /// @brief 连接 id → 关联身份 id 列表，取自 connectionidentity 表。
   Map<int, List<int>> _identityLinks = const {};
+  /// @brief 是否仍在加载数据，加载中显示进度圈。
   bool _loading = true;
 
-  /// 已折叠的分组。
+  /// @brief 已折叠的分组。
   ///
   /// 原版的 `connectiongroup` 表里**没有**展开状态字段，
   /// 所以展开/折叠只存在于内存中，这里同样只放在界面状态里，不落库。
   final Set<int> _collapsed = <int>{};
 
+  /// @brief 初始化并触发首次数据加载。
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  /// @brief 读取连接、分组、身份与身份关联后刷新界面。
   Future<void> _load() async {
     final connections = await _db.connections();
     final groups = await _db.groups();
@@ -72,7 +83,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   // ---------------------------------------------------------- 展示辅助 --
 
-  /// 该连接第一个身份的用户名，用于副标题。没有身份时返回 null。
+  /// @brief 该连接第一个身份的用户名，用于副标题。
+  ///
+  /// 没有身份时返回 null。
   String? _usernameFor(Connection connection) {
     for (final id in _identityLinks[connection.id] ?? const <int>[]) {
       for (final identity in _identities) {
@@ -84,8 +97,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     return null;
   }
 
-  /// 连接行副标题 = 关联身份的**显示名**（`Identity.toString()` 口径：昵称非空取
-  /// 昵称，否则取用户名），与 Identities 页那一行的标题同一个值
+  /// @brief 连接行副标题 = 关联身份的**显示名**（`Identity.toString()` 口径：
+  /// 昵称非空取昵称，否则取用户名），与 Identities 页那一行的标题同一个值
   /// （`identities_screen.dart:512-517` 的 `_titleOf`）。
   ///
   /// 第 70 轮实测（`.research/cnt_o2.png`，地址簿打开后 4 次采样、跨 28 秒完全
@@ -112,9 +125,10 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     return context.s('no_identity');
   }
 
+  /// @brief 连接行副标题，当前等于关联身份的显示名。
   String _subtitleFor(Connection connection) => _identityLabelFor(connection);
 
-  /// 原版的 `All` 伪分组：没有数据库实体，成员是**全部**连接。
+  /// @brief 原版的 `All` 伪分组：没有数据库实体，成员是**全部**连接。
   ///
   /// `hh0$a.smali:345-387`（连接列表的 `AsyncTask`）：真实分组处理完之后，只要连接
   /// 表非空就再构造一个名字为 `@string/all` 的 `ConnectionGroup`，成员取
@@ -124,7 +138,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
   /// 从 1 开始），折叠状态照旧按 `id` 记。
   ConnectionGroup get _allGroup => ConnectionGroup(name: context.s('all'));
 
-  /// 组装成「分组标题 + 其下连接」的扁平结构，末尾追加原版的 `All` 伪分组。
+  /// @brief 组装成「分组标题 + 其下连接」的扁平结构，末尾追加原版的
+  /// `All` 伪分组。
   List<Object> get _entries {
     final result = <Object>[];
     for (final group in _groups) {
@@ -144,6 +159,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   // ---------------------------------------------------------- 交互 --
 
+  /// @brief 组装身份、snippet 与端口转发后进入终端页。
   Future<void> _connect(Connection connection) async {
     final identities = <Identity>[];
     for (final id in _identityLinks[connection.id] ?? const <int>[]) {
@@ -183,7 +199,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     await _load();
   }
 
-  /// 连接行的长按菜单。
+  /// @brief 连接行的长按菜单。
   ///
   /// 原版是 Android 的**浮动上下文菜单**，不是底部弹层：底色框左上角落在触点
   /// 上、宽度 = 最宽文案 + 左右各 16dp（实测 793px）、每项 48dp、无 scrim，
@@ -271,6 +287,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     }
   }
 
+  /// @brief 打开连接编辑器，保存后刷新列表。
   Future<void> _openEditor(Connection? connection) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -280,8 +297,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     if (saved == true) await _load();
   }
 
-  /// 打开分组管理页（本复刻新增的页面，见 build 里长按处的说明）。
-  /// 分组行的长按菜单（对应原版 `group_context_menu.xml`）。
+  /// @brief 分组行的长按菜单（对应原版 `group_context_menu.xml`）。
   ///
   /// 原版三项 `edit` / `share` / `delete`：`share` 属 TeamShare（Pro），
   /// 本项目未实现；`edit` 进入分组管理页（对应原版 `manage_group.xml` 那一屏），
@@ -324,6 +340,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     }
   }
 
+  /// @brief 打开分组管理页，返回后刷新列表。
   Future<void> _openGroups() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const GroupsScreen()),
@@ -331,7 +348,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     if (mounted) await _load();
   }
 
-  /// 折叠/展开一个分组（仅界面状态）。
+  /// @brief 折叠/展开一个分组（仅界面状态）。
   void _toggleGroup(ConnectionGroup group) {
     setState(() {
       if (!_collapsed.remove(group.id)) _collapsed.add(group.id);
@@ -340,6 +357,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
 
   // ---------------------------------------------------------- 构建 --
 
+  /// @brief 构建分组标题与连接混排的列表。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

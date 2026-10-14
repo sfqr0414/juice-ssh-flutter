@@ -7,7 +7,7 @@ import '../data/models.dart';
 import '../widgets/juice_dialogs.dart';
 import '../widgets/juice_form.dart';
 
-/// 新建 / 编辑身份 —— 对应原版 `activities.ManageIdentityActivity`。
+/// @brief 新建 / 编辑身份 —— 对应原版 `activities.ManageIdentityActivity`。
 ///
 /// 界面严格按 `res/layout/manage_identity.xml` 还原：
 /// ```
@@ -92,26 +92,30 @@ import '../widgets/juice_form.dart';
 /// 提示，本次也没有实现口令流程（`manage_identity.xml` 里并没有口令这一行，
 /// 它属于运行期认证流程）。
 class IdentityEditorScreen extends StatefulWidget {
+  /// @brief 创建身份编辑页。
   const IdentityEditorScreen({super.key, this.identityId});
 
-  /// 为 null 时是「新建身份」，否则编辑该 id 的身份。
+  /// @brief 为 null 时是「新建身份」，否则编辑该 id 的身份。
   final int? identityId;
 
+  /// @brief 创建本页的 State。
   @override
   State<IdentityEditorScreen> createState() => _IdentityEditorScreenState();
 }
 
+/// @brief 身份编辑页的 State：持有输入控制器与当前编辑中的身份。
 class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
+  /// @brief 数据库单例，本页读写身份的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
-  /// 本页 `TableLayout` 第 0 列的宽度（实测 194px = 73.9dp）。
+  /// @brief 本页 `TableLayout` 第 0 列的宽度（实测 194px = 73.9dp）。
   ///
   /// 由这一列里最宽的标签（"Private Key:"）决定 —— `TableLayout` 的列宽规则是
   /// **整列等宽**，不是每个标签各算各的。连接编辑页的同一列是 207px
   /// （那边最宽的是 "Backspace:"），所以这个值不能全局共用一份。
   static const double _labelColumnWidth = 194 / 2.625;
 
-  /// 本页的一行「标签 + 控件」。
+  /// @brief 本页的一行「标签 + 控件」。
   JuiceFormRow _row({
     required String label,
     required Widget child,
@@ -124,20 +128,27 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
         child: child,
       );
 
+  /// @brief `@id/identityNickname_value`（昵称）输入框的控制器。
   final TextEditingController _nickname = TextEditingController();
+  /// @brief `@id/identityUsername_value`（用户名）输入框的控制器。
   final TextEditingController _username = TextEditingController();
 
-  /// 当前编辑中的身份。新建时先造一个空壳，字段随输入即时写回。
+  /// @brief 当前编辑中的身份。
+  ///
+  /// 新建时先造一个空壳，字段随输入即时写回。
   Identity _identity = const Identity(nickname: '');
 
+  /// @brief 是否仍在载入数据；载入完成前保存按钮不可点。
   bool _loading = true;
 
+  /// @brief 首次进入时载入待编辑的身份。
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  /// @brief 释放本页持有的输入框控制器。
   @override
   void dispose() {
     _nickname.dispose();
@@ -145,6 +156,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     super.dispose();
   }
 
+  /// @brief 按 id 读库回填；新建时直接结束载入。
   Future<void> _load() async {
     final id = widget.identityId;
     if (id == null) {
@@ -163,7 +175,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
 
   // ------------------------------------------------------------------ 保存 --
 
-  /// 保存 —— 对应 ActionBar 上的 `menu_item_save`。
+  /// @brief 保存 —— 对应 ActionBar 上的 `menu_item_save`。
   Future<void> _save() async {
     final s = context.s;
     // 先把 Navigator 取出来：`await` 之后再用 `context` 会触发
@@ -196,7 +208,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
 
   // ------------------------------------------------------- 密码 / 私钥 --
 
-  /// 设置 / 清除密码 —— `@id/identityPasswordButton`。
+  /// @brief 设置 / 清除密码 —— `@id/identityPasswordButton`。
   ///
   /// 对应原版 `ManageIdentityFragment$f`：清空即 `passUpdated = 0`。
   Future<void> _editPassword() async {
@@ -220,7 +232,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     });
   }
 
-  /// 设置 / 清除私钥 —— `@id/identityPrivateKey_button`。
+  /// @brief 设置 / 清除私钥 —— `@id/identityPrivateKey_button`。
   ///
   /// 对应原版 `ManageIdentityFragment$g`：同时把 `privatekeyPassword` 清空，
   /// 清空私钥时 `keyUpdated = 0`。
@@ -240,7 +252,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     });
   }
 
-  /// 私钥提示框 —— 只实现 `private_key_prompt_pastepage.xml` 这条「粘贴」路。
+  /// @brief 私钥提示框 —— 只实现「粘贴」这条 `pastepage` 路。
   ///
   /// 原文案键：`@string/private_key`（标题）与 `@string/paste`（输入提示）。
   Future<String?> _promptPastePrivateKey() {
@@ -257,7 +269,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     );
   }
 
-  /// 生成公钥代码片段按钮 —— `@id/generate_snippet`。
+  /// @brief 生成公钥代码片段按钮 —— `@id/generate_snippet`。
   ///
   /// 原版这一步会由私钥推导出公钥并生成一段 `authorized_keys` 片段，
   /// 属于 Pro 功能（`@string/pro_users_can_public_key_snippet` 说明就是这句话）。
@@ -273,6 +285,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建页面骨架：AppBar（保存按钮）+ 表单 / 载入指示。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -307,6 +320,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     );
   }
 
+  /// @brief 构建表单主体，逐行对应原版 `manage_identity.xml`。
   Widget _buildForm(BuildContext context) {
     final s = context.s;
 
@@ -399,7 +413,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     );
   }
 
-  /// 口令/私钥的状态文字。
+  /// @brief 口令/私钥的状态文字。
   ///
   /// 原版：`passUpdated`/`keyUpdated` 非 0 时显示
   /// `@string/updated` + 相对时间（`DateUtils.getRelativeTimeSpanString`），
@@ -408,6 +422,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
     if (timestamp == null || timestamp == 0) return null;
     final s = context.s;
     final updated = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    /// @brief 把数字补零成两位，用于拼 `yyyy-MM-dd HH:mm` 时间戳。
     String two(int value) => value.toString().padLeft(2, '0');
     final stamp =
         '${updated.year}-${two(updated.month)}-${two(updated.day)} '
@@ -416,7 +431,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
   }
 }
 
-/// 「密码 / 私钥」一行。
+/// @brief 「密码 / 私钥」一行。
 ///
 /// 对应 `manage_identity.xml` 的
 /// `TextView status` + `Button`（两者都是 `layout_weight=1`，各占一半宽度）。
@@ -424,6 +439,7 @@ class _IdentityEditorScreenState extends State<IdentityEditorScreen> {
 /// * 未设置时 status 为空（原版 `visibility="gone"`），按钮文案 `@string/set_optional`；
 /// * 已设置时 status 显示 `@string/updated` + 时间，按钮文案 `@string/update_or_clear`。
 class _SecretRow extends StatelessWidget {
+  /// @brief 创建「密码 / 私钥」一行。
   const _SecretRow({
     required this.labelWidth,
     required this.label,
@@ -433,16 +449,22 @@ class _SecretRow extends StatelessWidget {
     this.statusTextSize = 12,
   });
 
+  /// @brief 标签列宽度（本页实测 194px）。
   final double labelWidth;
+  /// @brief 该行的标签文案（如 `@string/password_colon`）。
   final String label;
+  /// @brief 是否已设置；false 时状态格完全不占位。
   final bool isSet;
+  /// @brief 状态文案（未设置时为 null）。
   final String? status;
+  /// @brief 点击设置 / 清除按钮的回调。
   final VoidCallback onPressed;
 
-  /// 状态文字字号：口令那一格原版写死 `textSize="12.0sp"`，
+  /// @brief 状态文字字号：口令那一格原版写死 `textSize="12.0sp"`，
   /// 私钥那一格用的是 `?android:textAppearanceSmall`（14sp）。
   final double statusTextSize;
 
+  /// @brief 构建「状态文字 + 设置/清除按钮」一行。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

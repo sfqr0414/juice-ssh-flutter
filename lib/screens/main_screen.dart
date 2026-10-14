@@ -15,7 +15,7 @@ import '../widgets/juice_popup_menu.dart';
 import 'address_book_screen.dart';
 import 'settings_screen.dart';
 
-/// 原版 `MainActivity`（LAUNCHER）——启动后的卡片式首页。
+/// @brief 原版 `MainActivity`（LAUNCHER）——启动后的卡片式首页。
 ///
 /// 布局来源 `res/layout/card_list.xml` + `res/layout/card_list_item.xml`。
 ///
@@ -40,43 +40,55 @@ import 'settings_screen.dart';
 /// 卡片高度是 `wrap_content`，实测 70.1dp（16 + 21.7 + 16.4 + 16），
 /// 而不是 `@dimen/list_item_height` 的 72dp —— 列表页才用 72dp。
 class MainScreen extends StatefulWidget {
+  /// @brief 创建首页 widget。
   const MainScreen({super.key});
 
+  /// @brief 创建首页的状态对象。
   @override
   State<MainScreen> createState() => _MainScreenState();
 }
 
-/// 「常用连接」卡片里每一页放几项（`MainActivity.smali:654` 写死 3）。
+/// @brief 「常用连接」卡片里每一页放几项（`MainActivity.smali:654` 写死 3）。
 const int _frequentPerPage = 3;
 
-/// 单行高度 `@dimen/...`：`frequently_used_item.xml` 写死 55dp。
+/// @brief 单行高度 `@dimen/...`：`frequently_used_item.xml` 写死 55dp。
 const double _frequentRowHeight = 55.0;
 
-/// 本复刻未实现的功能（Pro / 云端 / 账号）：原版这些入口背后分别是
+/// 说明（本块不附着任何声明）：本复刻未实现的功能（Pro / 云端 / 账号）：原版这些入口背后分别是
 /// PurchaseActivity / ManageCloudSyncActivity / TeamShareActivity /
 /// PluginsActivity / BookclubActivity，都需要服务端配合，属于用户明确要求
-/// 推迟的 Pro 范围。提示文案统一由 [JuiceDialogs.notInThisBuild] 给出 ——
+/// 推迟的 Pro 范围。
+///
+/// 提示文案统一由 [JuiceDialogs.notInThisBuild] 给出 ——
 /// 原版字符串表里自然没有「本复刻未提供」这类文案，这是一处**有意的、可见的
 /// 偏离**，好过假装成功或谎报错误。
 
+/// @brief 首页状态：加载身份与常用连接并分发给各张卡片。
 class _MainScreenState extends State<MainScreen> {
+  /// @brief 数据库单例，供首页读取连接、身份与转发。
   final JuiceDatabase _db = JuiceDatabase.instance;
 
+  /// @brief 地址簿里的全部身份，快速连接时按需平铺进会话。
   List<Identity> _identities = const [];
 
-  /// 按使用次数降序排列的「常用连接」，与原版 `FrequentlyUsedListAdapter`
-  /// 的排序口径一致（`connectioncounter.count DESC`）。
+  /// @brief 按使用次数降序排列的「常用连接」，与原版
+  /// `FrequentlyUsedListAdapter` 的排序口径一致
+  /// （`connectioncounter.count DESC`）。
   List<({Connection connection, int count})> _frequent = const [];
 
+  /// @brief 是否仍在加载首屏数据，加载中显示进度圈。
   bool _loading = true;
+  /// @brief 加载失败时的异常对象，非空则显示错误视图。
   Object? _error;
 
+  /// @brief 初始化状态并触发首屏数据加载。
   @override
   void initState() {
     super.initState();
     unawaited(_load());
   }
 
+  /// @brief 读取身份与常用连接计数，按次数降序刷新界面。
   Future<void> _load() async {
     try {
       final connections = await _db.connections();
@@ -111,7 +123,8 @@ class _MainScreenState extends State<MainScreen> {
 
   // ------------------------------------------------------------------ 操作 --
 
-  /// `Connection.w()`：昵称优先，其次地址，再次 localhost / Invalid Connection。
+  /// @brief `Connection.w()`：昵称优先，其次地址，再次 localhost /
+  /// Invalid Connection。
   String _connectionName(Connection connection) {
     if (connection.nickname.isNotEmpty) return connection.nickname;
     if (connection.address.isNotEmpty) return connection.address;
@@ -119,6 +132,7 @@ class _MainScreenState extends State<MainScreen> {
     return 'Invalid Connection';
   }
 
+  /// @brief 打开通讯录页，返回后重新加载常用连接。
   Future<void> _openAddressBook() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const AddressBookScreen()),
@@ -126,6 +140,7 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) await _load();
   }
 
+  /// @brief 打开设置页，返回后重新加载首页数据。
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
@@ -133,6 +148,7 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) await _load();
   }
 
+  /// @brief 组装身份与端口转发后进入终端页。
   Future<void> _openConnection(
     Connection connection, {
     String? quickConnectUsername,
@@ -175,6 +191,7 @@ class _MainScreenState extends State<MainScreen> {
     if (mounted) await _load();
   }
 
+  /// @brief 用外部应用打开 URL，失败时提示没有可用浏览器。
   Future<void> _launchExternal(String url) async {
     final messenger = ScaffoldMessenger.of(context);
     final s = context.s;
@@ -191,12 +208,15 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  /// @brief 打开原版官网 FAQ 页面。
   Future<void> _openFaq() => _launchExternal('https://sonelli.com/faq');
 
+  /// @brief 跳转应用市场给 JuiceSSH 评分。
   Future<void> _rateApp() =>
       _launchExternal('market://details?id=com.sonelli.juicessh');
 
-  /// `res/menu/menu_home.xml`：两项都是 `showAsAction="never"`，即溢出菜单。
+  /// @brief `res/menu/menu_home.xml`：两项都是 `showAsAction="never"`，
+  /// 即溢出菜单。
   Future<void> _showHomeMenu() async {
     final s = context.s;
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
@@ -236,11 +256,13 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  /// @brief 提示该功能在本复刻中未提供。
   Future<void> _showNotInBuild(String title) =>
       JuiceDialogs.notInThisBuild(context, title: title);
 
-  /// `com.sonelli.util.QuickConnectPrompt`：类型下拉 + `[username@]hostname[:port]`
-  /// + `save_for_future_use` 复选框，按钮 ok / cancel。
+  /// @brief `com.sonelli.util.QuickConnectPrompt`：类型下拉 +
+  /// `[username@]hostname[:port]` + `save_for_future_use` 复选框，
+  /// 按钮 ok / cancel。
   Future<void> _quickConnect() async {
     final result =
         await showDialog<({Connection connection, bool save, String? username})>(
@@ -292,6 +314,7 @@ class _MainScreenState extends State<MainScreen> {
 
   // ------------------------------------------------------------------ 渲染 --
 
+  /// @brief 构建首页 Scaffold 骨架。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -321,6 +344,7 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  /// @brief 按加载状态渲染卡片列表或错误视图。
   Widget _buildBody(JuiceStrings s) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return _ErrorView(message: '$_error');
@@ -401,10 +425,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
+/// @brief 首页溢出菜单的两项动作：FAQ 与评分。
 enum _HomeMenuAction { faq, rate }
 
-/// 卡片外框：`androidx.cardview.widget.CardView` + 2dp 圆角 + `card_item` 涟漪。
+/// @brief 卡片外框：`androidx.cardview.widget.CardView` +
+/// 2dp 圆角 + `card_item` 涟漪。
 class _HomeCard extends StatelessWidget {
+  /// @brief 创建首页卡片。
   const _HomeCard({
     required this.title,
     required this.subtitle,
@@ -414,24 +441,28 @@ class _HomeCard extends StatelessWidget {
     this.contentHeight,
   });
 
+  /// @brief 卡片标题。
   final String title;
+  /// @brief 卡片副标题。
   final String subtitle;
 
-  /// FontAwesome 码点（原版从 `@string/icon_*` 取，已逐个实测）。
+  /// @brief FontAwesome 码点（原版从 `@string/icon_*` 取，已逐个实测）。
   final int icon;
 
+  /// @brief 点击回调；null 时整张卡片不可点。
   final VoidCallback? onTap;
 
-  /// `@id/itemContent` —— 目前只有「常用连接」卡片用到。
+  /// @brief `@id/itemContent` —— 目前只有「常用连接」卡片用到。
   final Widget? content;
 
-  /// `content` 连同其上下 padding 的完整高度。
+  /// @brief `content` 连同其上下 padding 的完整高度。
   ///
   /// 原版给 `itemContent` 设了 `layout_marginTop="-20dp"`，让它上移、压住标题区
   /// 底部的空白。Flutter 的 `RenderPadding` 断言 padding 必须非负，不能用负
   /// margin，所以这里用「占位高度 −20dp + `OverflowBox` 按原高绘制」等效实现。
   final double? contentHeight;
 
+  /// @brief 构建卡片外观与内容区。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -531,18 +562,24 @@ class _HomeCard extends StatelessWidget {
   }
 }
 
-/// 用原版自带的 FontAwesome 字体渲染图标（`assets/fonts/fontawesome-webfont.ttf`）。
+/// @brief 用原版自带的 FontAwesome 字体渲染图标
+/// （`assets/fonts/fontawesome-webfont.ttf`）。
 class _FontAwesomeGlyph extends StatelessWidget {
+  /// @brief 创建 FontAwesome 字形 widget。
   const _FontAwesomeGlyph({
     required this.codePoint,
     required this.size,
     required this.color,
   });
 
+  /// @brief FontAwesome 字形码点。
   final int codePoint;
+  /// @brief 图标边长（字号）。
   final double size;
+  /// @brief 图标颜色。
   final Color color;
 
+  /// @brief 以指定字形、字号与颜色渲染图标字符。
   @override
   Widget build(BuildContext context) {
     return Text(
@@ -558,11 +595,13 @@ class _FontAwesomeGlyph extends StatelessWidget {
   }
 }
 
-/// 「常用连接」卡片的内容区：一个有左右箭头的分页列表，空态是 Welcome。
+/// @brief 「常用连接」卡片的内容区：一个有左右箭头的分页列表，
+/// 空态是 Welcome。
 ///
 /// 对应 `res/layout/indicated_page.xml` + `res/layout/frequently_used_page.xml`
 /// + `res/layout/frequently_used_item.xml`。
 class _FrequentlyUsedContent extends StatefulWidget {
+  /// @brief 创建「常用连接」内容区 widget。
   const _FrequentlyUsedContent({
     required this.items,
     required this.nameOf,
@@ -570,34 +609,45 @@ class _FrequentlyUsedContent extends StatefulWidget {
     required this.onTap,
   });
 
+  /// @brief 常用连接及其使用次数。
   final List<({Connection connection, int count})> items;
+  /// @brief 取某一行的标题（连接显示名）。
   final String Function(Connection) nameOf;
+  /// @brief 按使用次数生成副标题文案。
   final String Function(int) countLabel;
+  /// @brief 点击某一行的回调。
   final void Function(Connection) onTap;
 
-  /// `kh0.h()`：没有数据、或超过一页时固定 3 行高；否则按实际行数收缩。
+  /// @brief `kh0.h()`：没有数据、或超过一页时固定 3 行高；
+  /// 否则按实际行数收缩。
   static double heightFor(int itemCount) =>
       (itemCount == 0 || itemCount > _frequentPerPage)
           ? _frequentRowHeight * _frequentPerPage
           : _frequentRowHeight * itemCount;
 
-  /// 上下各 16dp / 8dp 的内边距（`itemContent` 被改过的 padding）。
+  /// @brief 上下各 16dp / 8dp 的内边距（`itemContent` 被改过的 padding）。
   static const double verticalPadding = 24;
 
+  /// @brief 创建「常用连接」内容区的状态对象。
   @override
   State<_FrequentlyUsedContent> createState() => _FrequentlyUsedContentState();
 }
 
+/// @brief 「常用连接」分页列表的状态。
 class _FrequentlyUsedContentState extends State<_FrequentlyUsedContent> {
+  /// @brief 卡片内分页列表的控制器。
   final PageController _controller = PageController();
+  /// @brief 当前页码，用于判断左右箭头是否可用。
   int _page = 0;
 
+  /// @brief 释放分页控制器。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// @brief 构建分页列表或空态 Welcome。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -709,7 +759,9 @@ class _FrequentlyUsedContentState extends State<_FrequentlyUsedContent> {
   }
 }
 
+/// @brief 分页列表左右两侧的翻页箭头按钮。
 class _PageArrow extends StatelessWidget {
+  /// @brief 创建翻页箭头按钮。
   const _PageArrow({
     required this.icon,
     required this.tooltip,
@@ -717,11 +769,16 @@ class _PageArrow extends StatelessWidget {
     required this.onTap,
   });
 
+  /// @brief 箭头图标。
   final IconData icon;
+  /// @brief 无障碍描述（原版是 back / forward）。
   final String tooltip;
+  /// @brief 是否可用；false 时置灰不可点。
   final bool enabled;
+  /// @brief 点击回调。
   final VoidCallback onTap;
 
+  /// @brief 按可用状态渲染翻页箭头按钮。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -739,18 +796,24 @@ class _PageArrow extends StatelessWidget {
   }
 }
 
-/// `frequently_used_item.xml`：55dp 行，左侧 32dp 的固定 globe 图标 + 双行文字。
+/// @brief `frequently_used_item.xml`：55dp 行，左侧 32dp 的固定
+/// globe 图标 + 双行文字。
 class _FrequentRow extends StatelessWidget {
+  /// @brief 创建一行常用连接。
   const _FrequentRow({
     required this.name,
     required this.subtitle,
     required this.onTap,
   });
 
+  /// @brief 连接显示名。
   final String name;
+  /// @brief 使用次数文案。
   final String subtitle;
+  /// @brief 点击回调。
   final VoidCallback onTap;
 
+  /// @brief 构建一行常用连接（图标 + 名称 + 次数副标题）。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -809,26 +872,34 @@ class _FrequentRow extends StatelessWidget {
   }
 }
 
-/// `QuickConnectPrompt`：类型 + `[username@]hostname[:port]` + 保存复选框。
+/// @brief `QuickConnectPrompt`：类型 + `[username@]hostname[:port]`
+/// + 保存复选框。
 class _QuickConnectDialog extends StatefulWidget {
+  /// @brief 创建快速连接对话框。
   const _QuickConnectDialog();
 
+  /// @brief 创建快速连接对话框的状态对象。
   @override
   State<_QuickConnectDialog> createState() => _QuickConnectDialogState();
 }
 
+/// @brief 快速连接对话框的状态：类型、地址与保存开关。
 class _QuickConnectDialogState extends State<_QuickConnectDialog> {
+  /// @brief 主机地址输入框控制器。
   final TextEditingController _host = TextEditingController();
+  /// @brief 当前选择的连接类型，决定默认端口。
   ConnectionType _type = ConnectionType.ssh;
+  /// @brief 是否把这条连接保存到地址簿（原版默认勾选）。
   bool _save = true; // 原版 android:checked="true"
 
+  /// @brief 释放地址输入框控制器。
   @override
   void dispose() {
     _host.dispose();
     super.dispose();
   }
 
-  /// 解析 `[username@]hostname[:port]`。
+  /// @brief 解析 `[username@]hostname[:port]`。
   ///
   /// 用户名必须保留：`Connection` 表里确实没有用户名列（用户名挂在 Identity 上），
   /// 但原版会把 Quick Connect 里输入的用户名挂在一个**临时身份**上
@@ -866,6 +937,7 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
     return (address: text, port: port, username: username);
   }
 
+  /// @brief 解析输入并把结果回传给调用方。
   void _submit() {
     final parsed = _parse(_host.text);
     if (parsed == null) return;
@@ -881,6 +953,7 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
     ));
   }
 
+  /// @brief 构建类型下拉、地址输入与保存复选框。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -998,6 +1071,7 @@ class _QuickConnectDialogState extends State<_QuickConnectDialog> {
   }
 }
 
+/// @brief 连接类型对应的字符串表键名。
 String _typeLabelKey(ConnectionType type) => switch (type) {
   ConnectionType.ssh => 'ssh',
   ConnectionType.telnet => 'telnet',
@@ -1005,12 +1079,15 @@ String _typeLabelKey(ConnectionType type) => switch (type) {
   ConnectionType.local => 'local_device',
 };
 
-/// `card_list.xml` 的 `@id/error_layout`。
+/// @brief `card_list.xml` 的 `@id/error_layout`。
 class _ErrorView extends StatelessWidget {
+  /// @brief 创建错误提示视图。
   const _ErrorView({required this.message});
 
+  /// @brief 错误详情文本。
   final String message;
 
+  /// @brief 构建加载失败的错误提示视图。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

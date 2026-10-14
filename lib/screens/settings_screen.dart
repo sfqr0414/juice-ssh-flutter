@@ -14,7 +14,9 @@ import 'known_hosts_screen.dart';
 import 'pin_lock_screen.dart';
 import 'snippets_screen.dart';
 
-/// 读取 `assets/data/dimens.json` 里的尺寸（值形如 `16.0dp` / `12.0sp`）。
+/// @brief 读取 `assets/data/dimens.json` 里的尺寸。
+///
+/// 值形如 `16.0dp` / `12.0sp`。
 ///
 /// 设置页用到的尺寸全部走这条路，避免把 dp 数值抄死在代码里。
 double _dimenValue(String name, double fallback) {
@@ -23,11 +25,12 @@ double _dimenValue(String name, double fallback) {
   return double.tryParse(raw.replaceAll(RegExp(r'[^0-9.]'), '')) ?? fallback;
 }
 
-/// `pinlock:style` —— 原版用它区分「密码短语」与「数字 PIN」两种锁屏样式，
+/// @brief `pinlock:style` —— 区分「密码短语」与「数字 PIN」两种锁屏样式。
+///
 /// 2 表示数字 PIN（`xk0.onPreferenceChange` 在开启安全锁时写入的值）。
 const String _keyPinlockStyle = 'pinlock:style';
 
-/// 设置页。
+/// @brief 设置页。
 ///
 /// 严格对应反编译出的 `res/xml/settings.xml`：**5 个分组、20 个条目、顺序一致**。
 /// 分组标题取 `general` / `app_security` / `terminal` / `mosh` / `about_us`
@@ -54,6 +57,7 @@ const String _keyPinlockStyle = 'pinlock:style';
 /// 是一个**空的 `<selector />`** —— 既没有背景色，也没有点击涟漪。
 /// 所以这里普通行用 [GestureDetector]（无反馈），开关行才用 [InkWell]。
 class SettingsScreen extends StatefulWidget {
+  /// @brief 创建设置页 widget。
   const SettingsScreen({
     super.key,
     this.onManageSnippets,
@@ -61,25 +65,31 @@ class SettingsScreen extends StatefulWidget {
     this.onSoftwareLicenses,
   });
 
-  /// `action:manageSnippets` → 原版 `ManageSnippetsActivity`。
+  /// @brief `action:manageSnippets` → 原版 `ManageSnippetsActivity`。
   ///
   /// 不传时默认打开本仓库的 [SnippetsScreen]（等价于原版跳转）；
   /// 传入则以此回调为准。
   final VoidCallback? onManageSnippets;
 
-  /// `action:manageEc2SyncProfiles` → 原版 `Ec2ProfilesActivity`（Pro 功能）。
+  /// @brief `action:manageEc2SyncProfiles` → 原版 `Ec2ProfilesActivity`。
+  ///
+  /// Pro 功能。
   final VoidCallback? onAmazonEc2Link;
 
-  /// `action:software_licenses` → 原版 `SoftwareLicensesActivity`。
+  /// @brief `action:software_licenses` → 原版 `SoftwareLicensesActivity`。
   final VoidCallback? onSoftwareLicenses;
 
+  /// @brief 创建本页的 State。
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
+/// @brief 设置页状态：把 SettingsController 的值渲染成原版设置项列表。
 class _SettingsScreenState extends State<SettingsScreen> {
+  /// @brief 设置控制器单例；本页的读值与写值都走它。
   SettingsController get _settings => SettingsController.instance;
 
+  /// @brief 构建设置页：5 个分组、20 个条目的列表。
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -253,7 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ------------------------------------------------------------ 分组骨架 --
 
-  /// 一个分组：标题 + 若干行，行之间补分隔线（最后一行后面不补）。
+  /// @brief 一个分组：标题 + 若干行，行之间补分隔线（最后一行后面不补）。
   Widget _section(BuildContext context, String titleKey, List<Widget> rows) {
     // **行与行之间没有分隔线。** 实测原版设置页任意两行交界处的整行像素都是
     // 纯白 `#FFFFFF`（扫了 y=546..561 与 730..745，非白像素为 0）；
@@ -271,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // -------------------------------------------------------------- 行构造 --
 
-  /// 纯动作行（`ActionPreference`）。
+  /// @brief 纯动作行（`ActionPreference`）。
   Widget _actionRow(
     BuildContext context,
     String titleKey,
@@ -287,7 +297,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 开关行（`SwitchDBPreference` / `EncSwitchDBPreference`）。
+  /// @brief 开关行（`SwitchDBPreference` / `EncSwitchDBPreference`）。
   Widget _switchRow(
     BuildContext context, {
     required String titleKey,
@@ -312,7 +322,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `theme:dark` —— `ListDBPreference`，选项来自 `@array/dark_theme_names`。
+  /// @brief `theme:dark` 行 —— 深色主题样式选择（`ListDBPreference`）。
+  ///
+  /// 选项来自 `@array/dark_theme_names`。
   ///
   /// 索引与取值都从 `@array/dark_theme_values` 反查，这样 API 29+ 把
   /// 「跟随系统」的取值从 `3` 改成 `-1` 也不影响。
@@ -339,7 +351,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `terminal:theme` —— 复用已有的配色选择器（`terminal_theme_item.xml`）。
+  /// @brief `terminal:theme` 行 —— 复用已有的配色选择器。
+  ///
+  /// 选择器布局来自 `terminal_theme_item.xml`。
   Widget _terminalThemeRow(BuildContext context) {
     final index = _settings.terminalThemeIndex;
     return _SettingsRow(
@@ -353,7 +367,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `terminal:font` —— 复用已有的字体选择器（`terminal_font_item.xml`）。
+  /// @brief `terminal:font` 行 —— 复用已有的字体选择器。
+  ///
+  /// 选择器布局来自 `terminal_font_item.xml`。
   Widget _terminalFontRow(BuildContext context) {
     final name = _settings.terminalFont;
     return _SettingsRow(
@@ -367,7 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `NumberDBPreference` 行（`font_size` / `terminal:margin`）。
+  /// @brief `NumberDBPreference` 行（`font_size` / `terminal:margin`）。
   Widget _numberRow(
     BuildContext context, {
     required String titleKey,
@@ -398,7 +414,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 普通 `ListDBPreference` 行：副标题显示当前取值的显示名（原版
+  /// @brief 普通 `ListDBPreference` 行：副标题显示当前取值的显示名。
+  ///
+  /// （原版
   /// `ListDBPreference$a` 给 `ListPreference` 设了 `%s`，所以副标题就是当前项）。
   Widget _entryRow(
     BuildContext context, {
@@ -426,7 +444,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `mosh:mosh-server` —— `TextDBPreference`，副标题显示当前命令
+  /// @brief `mosh:mosh-server`：`TextDBPreference`，副标题显示当前命令。
+  ///
   /// （`TextDBPreference$a.b()` 里 `setSummary(text)`）。
   Widget _moshServerRow(BuildContext context) {
     final current = _settings.moshServerCommand;
@@ -445,12 +464,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// @brief 取显示名：索引越界时返回 null。
   String? _entryName(List<String> names, int index) =>
       index >= 0 && index < names.length ? names[index] : null;
 
   // ------------------------------------------------------------ 交互逻辑 --
 
-  /// `security_lock`：打开时先走 PIN 设置流程（原版 `PinManager.a()`），
+  /// @brief `security_lock` 开关：先走 PIN 设置流程，成功后才启用。
+  ///
+  /// （原版 `PinManager.a()`），
   /// 设置成功才写 `pinlock:enabled=true`；关闭时清掉 PIN。
   Future<void> _setSecurityLock(bool enabled) async {
     if (enabled) {
@@ -468,21 +490,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _settings.setPinLockEnabled(false);
   }
 
-  /// 打开片段管理页（原版 `ManageSnippetsActivity`）。
+  /// @brief 打开片段管理页（原版 `ManageSnippetsActivity`）。
   void _openSnippets() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const SnippetsScreen()),
     );
   }
 
-  /// 打开「已知主机」列表页（本复刻新增，原版只有下面的破坏性清空动作）。
+  /// @brief 打开「已知主机」列表页（本复刻新增）。
+  ///
+  /// 原版只有下面的破坏性清空动作。
   void _openKnownHosts() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const KnownHostsScreen()),
     );
   }
 
-  /// `action:clear_known_hosts`。
+  /// @brief `action:clear_known_hosts`。
   ///
   /// 原版 `ej0.u()`：标题 `clear_known_hosts`、正文 `are_you_sure_clear_known_hosts`、
   /// 按钮 `confirm` / `cancel`；清完弹出 `known_hosts_cleared`。
@@ -504,7 +528,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// `action:rate_us` —— 原版打开 `market://details?id=<app_package_name>`，
+  /// @brief `action:rate_us` —— 打开应用商店的评分页。
+  ///
+  /// 原版打开 `market://details?id=<app_package_name>`，
   /// 打不开时提示 `google_play_not_installed`。
   Future<void> _rateUs() async {
     final packageName = context.s('app_package_name');
@@ -512,7 +538,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _launch('market://details?id=$packageName', failure);
   }
 
-  /// `action:website` —— 原版打开 `@string/app_website`，失败提示
+  /// @brief `action:website` —— 打开项目官网。
+  ///
+  /// 原版打开 `@string/app_website`，失败提示
   /// `there_are_no_browsers_available`。
   Future<void> _openWebsite() async {
     final website = context.s('app_website');
@@ -520,7 +548,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _launch(website, failure);
   }
 
-  /// 用外部程序打开链接；失败时提示（原版这里是 Toast，这里用 SnackBar）。
+  /// @brief 用外部程序打开链接，失败时提示。
+  ///
+  /// 原版这里是 Toast，这里用 SnackBar。
   Future<void> _launch(String url, String failureMessage) async {
     final messenger = ScaffoldMessenger.of(context);
     var opened = false;
@@ -538,7 +568,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // -------------------------------------------------------------- 对话框 --
 
-  /// 单选列表对话框，对应原版 `ListDBPreference` 弹的 `AlertDialog`。
+  /// @brief 单选列表对话框，对应原版 `ListDBPreference` 弹的 `AlertDialog`。
   ///
   /// 外观走 [JuiceListDialog]：行高 48dp、起始内边距 20dp、单选标记槽 32dp、
   /// 文字 16sp，全部按原版 `select_dialog_singlechoice_material.xml` 实测。
@@ -561,7 +591,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 数值对话框，对应原版 `NumberDBPreference`。
+  /// @brief 数值对话框，对应原版 `NumberDBPreference`。
   Future<int?> _pickNumber(
     BuildContext context, {
     required String title,
@@ -586,7 +616,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-/// 类别标题（`PreferenceCategory`）。
+/// @brief 类别标题（`PreferenceCategory`）。
 ///
 /// 框架的 `preference_category.xml` 用的是 `?android:listSeparatorTextViewStyle`
 /// 并**没有**被 JuiceSSH 覆盖颜色；框架资源不在 APK 里，所以这里按该样式在
@@ -594,13 +624,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
 /// `?android:listPreferredItemHeightSmall`（= `@dimen/abc_list_item_height_small_material`
 /// = 48dp）、左右各 `@dimen/abc_action_bar_content_inset_material`（16dp）内边距。
 class _CategoryHeader extends StatelessWidget {
+  /// @brief 创建类别标题 widget。
   const _CategoryHeader({required this.title});
 
+  /// @brief 区段标题文案（已翻译）。
   final String title;
 
+  /// @brief 区段标题内边距：`abc_action_bar_content_inset_material`。
   static final double _padding =
       _dimenValue('abc_action_bar_content_inset_material', 16);
 
+  /// @brief 构建区段标题行。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -637,8 +671,9 @@ class _CategoryHeader extends StatelessWidget {
   }
 }
 
-/// 通用设置行。
+/// @brief 通用设置行。
 class _SettingsRow extends StatelessWidget {
+  /// @brief 创建通用设置行 widget。
   const _SettingsRow({
     required this.title,
     this.subtitle,
@@ -648,42 +683,51 @@ class _SettingsRow extends StatelessWidget {
     this.selectable = false,
   });
 
-  /// 标题（`@android:id/title`）。
+  /// @brief 标题（`@android:id/title`）。
   final String title;
 
-  /// 副标题（`@android:id/summary`），最多两行。
+  /// @brief 副标题（`@android:id/summary`），最多两行。
   final String? subtitle;
 
-  /// 右侧控件区（`@android:id/widget_frame`）内容。
+  /// @brief 右侧控件区（`@android:id/widget_frame`）内容。
   final Widget? trailing;
 
+  /// @brief 整行单击回调。
   final VoidCallback? onTap;
 
-  /// 长按行为。原版所有设置项都没有长按绑定，这里只用于打开本复刻新增的
-  /// 补充页面（当前只有「已知主机」列表页）。
+  /// @brief 长按行为：原版无绑定，这里用于打开本复刻新增的补充页面。
+  ///
+  /// 当前只有「已知主机」列表页。
   final VoidCallback? onLongPress;
 
-  /// 整行是否套 `@android:drawable/list_selector_background`（只有开关行会）。
+  /// @brief 整行是否套列表选中背景（只有开关行会）。
+  ///
+  /// 背景取自 `@android:drawable/list_selector_background`。
   final bool selectable;
 
-  /// `@dimen/activity_padding`（16dp）
+  /// @brief `@dimen/activity_padding`（16dp）
   static final double _padding = _dimenValue('activity_padding', 16);
 
-  /// `@dimen/text_item_title`（16sp）
+  /// @brief `@dimen/text_item_title`（16sp）
   static final double _titleSize = _dimenValue('text_item_title', 16);
 
-  /// `@dimen/text_item_subtitle`（12sp）
+  /// @brief `@dimen/text_item_subtitle`（12sp）
   static final double _subtitleSize = _dimenValue('text_item_subtitle', 12);
 
-  /// `?android:listPreferredItemHeight` —— AppCompat 把它定义成
+  /// @brief 行最小高度 `?android:listPreferredItemHeight`。
+  ///
+  /// AppCompat 把它定义成
   /// `@dimen/abc_list_item_height_material`（64dp）。
   static final double _minHeight =
       _dimenValue('abc_list_item_height_material', 64);
 
-  /// `@android:id/widget_frame` 的宽度：实测原版开关行里是 206px
+  /// @brief `@android:id/widget_frame` 的宽度：78.5dp。
+  ///
+  /// 实测原版开关行里是 206px
   /// （`[874,...][1080,...]`），即 78.5dp。
   static const double _widgetFrameWidth = 206 / 2.625;
 
+  /// @brief 构建设置行（标题 + 副标题 + 右侧控件区）。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -765,12 +809,14 @@ class _SettingsRow extends StatelessWidget {
   }
 }
 
-/// 数值选择对话框（对应原版 `NumberDBPreference` 里的 `NumberPicker`）。
+/// @brief 数值选择对话框（原版 `NumberDBPreference` 的 `NumberPicker`）。
+///
 ///
 /// 原版在 API > 13 上用 `android.widget.NumberPicker`（min..max 的滚轮），
 /// 上面还有一行 `custom:label` 文本、对话框正文是 `custom:message`。
 /// Flutter 没有等价控件，这里用 [ListWheelScrollView] 复刻滚轮与中间放大效果。
 class _NumberPickerDialog extends StatefulWidget {
+  /// @brief 创建数值选择对话框 widget。
   const _NumberPickerDialog({
     required this.title,
     required this.label,
@@ -780,21 +826,32 @@ class _NumberPickerDialog extends StatefulWidget {
     required this.initial,
   });
 
+  /// @brief 对话框标题。
   final String title;
+  /// @brief 滚轮左侧的标签文案。
   final String label;
+  /// @brief 对话框正文文案。
   final String message;
+  /// @brief 可选最小值（含）。
   final int min;
+  /// @brief 可选最大值（含）。
   final int max;
+  /// @brief 初始值，越界时夹回区间。
   final int initial;
 
+  /// @brief 创建对话框的 State。
   @override
   State<_NumberPickerDialog> createState() => _NumberPickerDialogState();
 }
 
+/// @brief 数值选择对话框的状态：维护滚轮控制器与当前值。
 class _NumberPickerDialogState extends State<_NumberPickerDialog> {
+  /// @brief 滚轮控制器，初始定位到当前值。
   late final FixedExtentScrollController _controller;
+  /// @brief 当前选中值（对话框返回值）。
   late int _value;
 
+  /// @brief 初始化：把初始值夹进区间并定位滚轮。
   @override
   void initState() {
     super.initState();
@@ -808,12 +865,14 @@ class _NumberPickerDialogState extends State<_NumberPickerDialog> {
     );
   }
 
+  /// @brief 释放滚轮控制器。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// @brief 构建数值选择对话框。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -946,17 +1005,22 @@ class _NumberPickerDialogState extends State<_NumberPickerDialog> {
   }
 }
 
-/// 原版设置页用的是 AppCompat 的 `SwitchCompat`，它把 ON/OFF 文字画在开关轨道里。
+/// @brief 带 ON/OFF 文字的开关（`SwitchCompat` 等价物）。
+///
 /// uiautomator 实测原版：`OFF` 节点与开关控件同 bounds（例如
 /// `[916,1037][1038,1108]`，贴着列表右边缘，宽约 122px），而 Flutter 的 `Switch`
 /// 不带文字。这里把标签叠在轨道上层（`IgnorePointer` 保证点击穿透）：
 /// 关时留在右侧、开时移到左侧，与 Android 的观感一致。
 class _JuiceSwitchText extends StatelessWidget {
+  /// @brief 创建带 ON/OFF 文字的开关 widget。
   const _JuiceSwitchText({required this.value, required this.onChanged});
 
+  /// @brief 开关当前状态。
   final bool value;
+  /// @brief 状态变化回调；为 null 时开关禁用。
   final ValueChanged<bool>? onChanged;
 
+  /// @brief 构建开关与叠加的 ON/OFF 文字。
   @override
   Widget build(BuildContext context) {
     return SizedBox(

@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 
 import '../data/models.dart';
 
-/// 端口转发常驻通知的原生桥。
+/// @brief 端口转发常驻通知的原生桥。
 ///
 /// 原版 JuiceSSH 每条活动转发都会挂一个通知（`gi0.smali`）：
 /// 带计时器（`setUsesChronometer(true)`）、带一个停止动作
@@ -13,16 +13,20 @@ import '../data/models.dart';
 /// 注意 `openInBrowser` **不是**「建立后自动打开浏览器」：原版只在构造通知的
 /// `contentIntent` 时读它，转发本身不会主动拉起浏览器。
 class ForwardNotifications {
+  /// @brief 私有构造：全部能力都是静态方法。
   ForwardNotifications._();
 
+  /// @brief 端口转发通知的原生 MethodChannel。
   static const MethodChannel _channel =
       MethodChannel('com.juicessh.juice_ssh_flutter/port_forwards');
 
-  /// 转发 id → 通知上「停止」被按下时该做什么。
+  /// @brief 转发 id → 通知上「停止」被按下时该做什么。
   static final Map<int, void Function()> _stoppers = <int, void Function()>{};
 
+  /// @brief 是否已装好原生方法回调（只装一次）。
   static bool _attached = false;
 
+  /// @brief 装好原生方法的回调，只执行一次。
   static void _attach() {
     if (_attached) return;
     _attached = true;
@@ -35,7 +39,9 @@ class ForwardNotifications {
     });
   }
 
-  /// 挂一条转发的通知。[onStop] 是通知上「停止」被按下时的回调。
+  /// @brief 挂一条转发的通知。
+  ///
+  /// [onStop] 是通知上「停止」被按下时的回调。
   static Future<void> show(
     PortForward forward, {
     required String disconnectLabel,
@@ -63,7 +69,7 @@ class ForwardNotifications {
     }
   }
 
-  /// 撤掉一条转发的通知。
+  /// @brief 撤掉一条转发的通知。
   static Future<void> cancel(int forwardId) async {
     if (forwardId <= 0) return;
     _stoppers.remove(forwardId);

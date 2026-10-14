@@ -7,7 +7,7 @@ import '../widgets/juice_dialogs.dart';
 import '../widgets/pager_list.dart';
 import 'identities_screen.dart';
 
-/// 已知主机（known hosts）列表页。
+/// @brief 已知主机（known hosts）列表页。
 ///
 /// ### 原版事实：**没有这一页**
 /// 反编译资源里不存在 `known_hosts*.xml` 布局，也没有对应的 Activity；
@@ -42,30 +42,38 @@ import 'identities_screen.dart';
 /// `hostname` / `key` / `type` / `fingerprint`。列表行显示
 /// **主机名（标题）+ 指纹（副标题）**。
 class KnownHostsScreen extends StatefulWidget {
+  /// @brief 创建已知主机列表页 widget。
   const KnownHostsScreen({super.key});
 
-  /// AppBar 里"清空"动作的图标键。
+  /// @brief AppBar 里"清空"动作的图标键。
   ///
   /// 原版设置项的图标是 `@drawable/highlight` 的默认样式（无图标），
   /// 这里用 Material 的"清空列表"图标作等价表达。
   static const IconData clearIcon = Icons.delete_sweep;
 
+  /// @brief 创建本页的 State。
   @override
   State<KnownHostsScreen> createState() => _KnownHostsScreenState();
 }
 
+/// @brief 已知主机列表页的状态：载入主机列表并执行清空。
 class _KnownHostsScreenState extends State<KnownHostsScreen> {
+  /// @brief 数据库单例，本页只读它与清空 known hosts。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 当前已载入的已知主机列表。
   List<KnownHost> _hosts = const <KnownHost>[];
+  /// @brief 是否仍在读库；加载期间显示进度圈。
   bool _loading = true;
 
+  /// @brief 初始化：载入已知主机列表。
   @override
   void initState() {
     super.initState();
     _reload();
   }
 
+  /// @brief 从数据库重新载入已知主机列表。
   Future<void> _reload() async {
     final hosts = await _db.knownHosts();
     if (!mounted) return;
@@ -77,7 +85,7 @@ class _KnownHostsScreenState extends State<KnownHostsScreen> {
 
   // ------------------------------------------------------------------ 动作 --
 
-  /// 清空已知主机 —— 逐条照抄 `ej0.u()`。
+  /// @brief 清空已知主机 —— 逐条照抄 `ej0.u()`。
   Future<void> _clear() async {
     final s = context.s;
     // 先把 messenger 与提示文案取出来，避免 `await` 之后再碰 `context`。
@@ -105,7 +113,7 @@ class _KnownHostsScreenState extends State<KnownHostsScreen> {
     messenger.showSnackBar(SnackBar(content: Text(clearedText)));
   }
 
-  /// 点行查看完整信息。
+  /// @brief 点行查看完整信息。
   ///
   /// 原版没有这一页，但在主机密钥确认框里（`JuiceDialogs.confirmHostKey`
   /// 对应的 `this_is_the_first_time_youve_connected` / `host_key_changed`）
@@ -130,6 +138,7 @@ class _KnownHostsScreenState extends State<KnownHostsScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建列表页：空列表显示空状态，否则显示主机行。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -172,7 +181,7 @@ class _KnownHostsScreenState extends State<KnownHostsScreen> {
     );
   }
 
-  /// 空状态。
+  /// @brief 空状态。
   ///
   /// 度量沿用 `port_forwards.xml` / `pager_list.xml` 的写法
   /// （标题 `@dimen/text_heading` = 36sp / `@color/text_heading`，

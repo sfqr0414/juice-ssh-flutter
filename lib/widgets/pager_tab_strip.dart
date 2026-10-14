@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-/// `androidx.viewpager.widget.PagerTabStrip` 的 Flutter 复刻。
+/// @brief `androidx.viewpager.widget.PagerTabStrip` 的 Flutter 复刻。
 ///
 /// 原版 `res/layout/address_book.xml`：
 ///
@@ -68,6 +68,7 @@ import 'package:flutter/material.dart';
 /// 翻页动画用 `ViewPager.smoothScrollTo`（velocity=0）的时长
 /// `(|Δ页| + 1) × 100ms`（上限 600ms）与它自带的五次方缓出插值器。
 class JuicePagerTabStrip extends StatelessWidget {
+  /// @brief 用标题列表、控制器、当前页与文字色构造标题条带。
   const JuicePagerTabStrip({
     super.key,
     required this.titles,
@@ -76,27 +77,30 @@ class JuicePagerTabStrip extends StatelessWidget {
     required this.textColor,
   });
 
+  /// @brief 三个标签页的标题文案。
   final List<String> titles;
+  /// @brief 驱动条带位置的 ViewPager 控制器。
   final PageController controller;
 
-  /// 当前页索引，用于 `controller` 尚未 attach 时的回退值。
+  /// @brief 当前页索引，用于 `controller` 尚未 attach 时的回退值。
   final int index;
 
+  /// @brief 标题与指示条的颜色（原版取 @color/text_heading）。
   final Color textColor;
 
-  /// 条带高度。`wrap_content`，420dpi 实测 84px。
+  /// @brief 条带高度。`wrap_content`，420dpi 实测 84px。
   static const double height = 32;
 
-  /// 字号。`PagerTitleStrip` 的默认标题字号 14sp，实测文字框高 51px。
+  /// @brief 字号。`PagerTitleStrip` 的默认标题字号 14sp，实测文字框高 51px。
   static const double fontSize = 14;
 
-  /// 相邻标题的间距，`TAB_SPACING`。
+  /// @brief 相邻标题的间距，`TAB_SPACING`。
   static const double spacing = 32;
 
-  /// 指示条在标题左右各外扩的距离，`TAB_PADDING`。
+  /// @brief 指示条在标题左右各外扩的距离，`TAB_PADDING`。
   static const double tabPadding = 16;
 
-  /// 指示条高度，`INDICATOR_HEIGHT`。
+  /// @brief 指示条高度，`INDICATOR_HEIGHT`。
   ///
   /// 第 66 轮实测（420dpi）：原版指示条占 y 351..355（5px ≈ 2dp），其下另有
   /// 一条满宽的 1dp 细线 y 356..358（整行 1080px 纯白）。克隆原本是 3dp 且
@@ -104,10 +108,10 @@ class JuicePagerTabStrip extends StatelessWidget {
   /// 后应为 877(文字) + 1170(指示条) + 3240(细线) ≈ 5287，与原版 5318 差 0.6%。
   static const double indicatorHeight = 2;
 
-  /// 指示条下方那条满宽细线的高度，实测 3px ≈ 1dp。
+  /// @brief 指示条下方那条满宽细线的高度，实测 3px ≈ 1dp。
   static const double bottomRuleHeight = 1;
 
-  /// 非当前标题的不透明度，`PagerTitleStrip.SIDE_ALPHA` = 0.6。
+  /// @brief 非当前标题的不透明度，`PagerTitleStrip.SIDE_ALPHA` = 0.6。
   ///
   /// 原版不是渐变：构造函数里 `setNonPrimaryAlpha(0.6f)` 把 prev/next 两个
   /// `TextView` 的文字色一次性设成 `0x99FFFFFF`（`(int)(0.6×255)=0x99` 左移 24 位
@@ -119,12 +123,12 @@ class JuicePagerTabStrip extends StatelessWidget {
   /// `#586E75 × 0.6` 叠白 ≈ `#9BA8AC`。
   static const double sideAlpha = 0.6;
 
-  /// `ViewPager.smoothScrollTo` 在 `velocity == 0`（点击翻页）时的时长：
+  /// @brief `ViewPager.smoothScrollTo` 在 `velocity == 0`（点击翻页）时的时长：
   /// `(|Δ页| + 1) × 100ms`，上限 `MAX_SETTLE_DURATION` = 600ms。
   static Duration settleDuration(int pageDelta) =>
       Duration(milliseconds: ((pageDelta.abs() + 1) * 100).clamp(0, 600));
 
-  /// 按 `PagerTabStrip.onTouchEvent` 的 `ACTION_UP` 分支决定翻到哪一页。
+  /// @brief 按 `PagerTabStrip.onTouchEvent` 的 `ACTION_UP` 分支决定翻到哪一页。
   ///
   /// [currentLeft] / [currentWidth] 是当前标题在条带里的实际位置与宽度
   /// （滚动过程中按插值后的位置算，也就是用户看到的位置）。
@@ -149,6 +153,7 @@ class JuicePagerTabStrip extends StatelessWidget {
     );
   }
 
+  /// @brief 构建浮在页面之上的标题条带。
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -177,7 +182,7 @@ class JuicePagerTabStrip extends StatelessWidget {
               final current = page.floor().clamp(0, titles.length - 1);
               final t = (page - current).clamp(0.0, 1.0);
 
-              /// 第 [p] 页时标题 [i] 的左边界；null = 该页不参与 layout。
+              /// @brief 第 [p] 页时标题 [i] 的左边界；null = 该页不参与 layout。
               double? leftOnPage(int p, int i) {
                 if (p < 0 || p >= titles.length) return null;
                 final centre = width / 2 - widths[p] / 2;
@@ -284,7 +289,7 @@ class JuicePagerTabStrip extends StatelessWidget {
     );
   }
 
-  /// 量一段文字在当前字号下的宽度，用来把标题精确摆到条带中心。
+  /// @brief 量一段文字在当前字号下的宽度，用来把标题精确摆到条带中心。
   static double _measure(String text) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: const TextStyle(fontSize: fontSize)),
@@ -295,14 +300,16 @@ class JuicePagerTabStrip extends StatelessWidget {
   }
 }
 
-/// `ViewPager` 自带的滚动插值器。
+/// @brief `ViewPager` 自带的滚动插值器。
 ///
 /// `ViewPager` 里那个匿名 `Interpolator` 的实现是 `t--; return t*t*t*t*t + 1;`，
 /// 换元即 `1 - (1-t)^5` —— 一条精确的五次方缓出曲线。Flutter 的
 /// `Curves.easeOutQuint` 只是三次贝塞尔近似，所以这里直接写出原式。
 class _ViewPagerInterpolator extends Curve {
+  /// @brief 构造 ViewPager 自带的五次缓出插值器。
   const _ViewPagerInterpolator();
 
+  /// @brief 计算五次缓出曲线在 [t] 处的值。
   @override
   double transformInternal(double t) {
     final u = t - 1;

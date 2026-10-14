@@ -4,7 +4,7 @@ import '../app/i18n.dart';
 import '../ssh/ssh_service.dart';
 import 'juice_alert_dialog.dart';
 
-/// 应用里的通用对话框。
+/// @brief 应用里的通用对话框。
 ///
 /// 文案全部取自原版 `res/values/strings.xml`，不另写一套，
 /// 因此中英文表现都与原版一致。
@@ -14,9 +14,10 @@ import 'juice_alert_dialog.dart';
 /// 不再直接用 Flutter 的 `AlertDialog` 默认样式 —— 默认样式的窗口宽度、
 /// 标题行高、按钮尺寸都与原版差得很远。
 class JuiceDialogs {
+  /// @brief 私有构造；本类只提供静态方法，不实例化。
   const JuiceDialogs._();
 
-  /// 主机密钥确认框。
+  /// @brief 主机密钥确认框。
   ///
   /// 对应原版两条文案：
   /// * 首次连接 —— `this_is_the_first_time_youve_connected`
@@ -68,7 +69,7 @@ class JuiceDialogs {
     return accepted == true ? HostKeyVerdict.accepted : HostKeyVerdict.rejected;
   }
 
-  /// 询问密码 / 私钥口令 / 两步验证码。
+  /// @brief 询问密码 / 私钥口令 / 两步验证码。
   ///
   /// [echo] 为 false 时输入框隐藏字符，对应原版
   /// `please_enter_your_private_key_passphrase` 这类提示。
@@ -88,7 +89,7 @@ class JuiceDialogs {
     );
   }
 
-  /// 通用「确认 / 取消」框。返回 true 表示用户确认。
+  /// @brief 通用「确认 / 取消」框。返回 true 表示用户确认。
   static Future<bool> confirm(
     BuildContext context, {
     required String title,
@@ -121,7 +122,7 @@ class JuiceDialogs {
     return result == true;
   }
 
-  /// 「本复刻没做这个功能」的统一提示。
+  /// @brief 「本复刻没做这个功能」的统一提示。
   ///
   /// 原版里这些入口背后是内购、账号云同步、EC2、第三方插件、图书等
   /// 本复刻没有实现的能力。宁可明确说一句，也不要让用户点了没反应，
@@ -136,7 +137,7 @@ class JuiceDialogs {
         message: 'Not available in this build.',
       );
 
-  /// 通用提示框。
+  /// @brief 通用提示框。
   static Future<void> message(
     BuildContext context, {
     required String title,
@@ -163,7 +164,7 @@ class JuiceDialogs {
     );
   }
 
-  /// 单行文本输入框。用于「新建分组」这类简单命名操作。
+  /// @brief 单行文本输入框。用于「新建分组」这类简单命名操作。
   static Future<String?> promptForText(
     BuildContext context, {
     required String title,
@@ -182,7 +183,7 @@ class JuiceDialogs {
     );
   }
 
-  /// 粘贴私钥用的多行输入框。
+  /// @brief 粘贴私钥用的多行输入框。
   ///
   /// 原版标题 `@string/private_key`、提示 `@string/paste`，输入框
   /// 7~12 行且关闭自动纠错联想（`private_key_prompt_pastepage.xml`）。
@@ -207,7 +208,7 @@ class JuiceDialogs {
   }
 }
 
-/// 单行输入对话框（密码 / 口令 / 分组名）。
+/// @brief 单行输入对话框（密码 / 口令 / 分组名）。
 ///
 /// `TextEditingController` 必须由对话框**自己**持有并在自己的 `dispose()`
 /// 里释放。曾经写成在调用方 `await showDialog(...)` 之后立刻 `dispose()`，
@@ -219,6 +220,7 @@ class JuiceDialogs {
 /// 这个异常会把整个 Overlay 换成 `ErrorWidget`（红底黄字），终端页因此
 /// 表现为整屏红色、连快捷键栏都看不见。第 11 轮定位、第 12 轮修复。
 class _TextPromptDialog extends StatefulWidget {
+  /// @brief 用标题、可选提示与行数等参数构造输入对话框。
   const _TextPromptDialog({
     required this.title,
     this.hint,
@@ -230,27 +232,38 @@ class _TextPromptDialog extends StatefulWidget {
     this.disableSuggestions = false,
   });
 
+  /// @brief 对话框标题。
   final String title;
+  /// @brief 输入框提示文字；null 时不加 decoration。
   final String? hint;
+  /// @brief 输入框初始文本。
   final String? initialValue;
+  /// @brief 是否隐藏输入字符（密码 / 口令）。
   final bool obscure;
+  /// @brief 打开时是否全选已有文本。
   final bool selectAll;
+  /// @brief 输入框最小行数。
   final int minLines;
+  /// @brief 输入框最大行数。
   final int maxLines;
 
-  /// 私钥这类内容要关掉自动纠错与联想
+  /// @brief 私钥这类内容要关掉自动纠错与联想
   /// （原版 `private_key_prompt_pastepage.xml` 用的是
   /// `textVisiblePassword|textMultiLine`）。
   final bool disableSuggestions;
 
+  /// @brief 创建 [_TextPromptDialogState]。
   @override
   State<_TextPromptDialog> createState() => _TextPromptDialogState();
 }
 
+/// @brief [_TextPromptDialog] 的状态：持有输入框的文本控制器。
 class _TextPromptDialogState extends State<_TextPromptDialog> {
+  /// @brief 对话框自己持有的文本控制器，随 State 一起释放。
   late final TextEditingController _controller =
       TextEditingController(text: widget.initialValue ?? '');
 
+  /// @brief 若 widget.selectAll 为真且已有文本，则全选。
   @override
   void initState() {
     super.initState();
@@ -262,12 +275,14 @@ class _TextPromptDialogState extends State<_TextPromptDialog> {
     }
   }
 
+  /// @brief 释放 [_controller]。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
+  /// @brief 构建 标题 + 输入框 + Cancel/OK 的对话框。
   @override
   Widget build(BuildContext context) {
     final colors = JuiceDialogColors.of(context);

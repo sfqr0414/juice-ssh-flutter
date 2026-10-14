@@ -4,7 +4,8 @@ import '../app/i18n.dart';
 import '../app/juice_colors.dart';
 import '../app/juice_theme.dart';
 
-/// `res/layout/address_list.xml` 的 Flutter 复刻（通讯录「Connections」页）。
+/// @brief `res/layout/address_list.xml` 的 Flutter
+/// 复刻（通讯录「Connections」页）。
 ///
 /// 原版结构（`RelativeLayout`）：
 /// * `@id/list_container`
@@ -28,6 +29,7 @@ import '../app/juice_theme.dart';
 /// | Port Forwards | `port_forwards.xml` | `tabs` | 无 |
 /// | Snippets 等 | `pager_list.xml` | `centered` | 无 |
 class PagerList extends StatelessWidget {
+  /// @brief 用空态文案、条目数、构建器与新建回调构造列表页。
   const PagerList({
     super.key,
     required this.emptyTitle,
@@ -39,41 +41,44 @@ class PagerList extends StatelessWidget {
     this.newTooltip,
   });
 
-  /// 空状态标题文案（例如 `no_connections`）。
+  /// @brief 空状态标题文案（例如 `no_connections`）。
   final String emptyTitle;
 
-  /// 空状态正文文案（例如 `you_do_not_have_any_connections`）。
+  /// @brief 空状态正文文案（例如 `you_do_not_have_any_connections`）。
   final String emptyMessage;
 
+  /// @brief 列表条目数；为 0 时显示空状态。
   final int itemCount;
+  /// @brief 逐条构建列表行。
   final IndexedWidgetBuilder itemBuilder;
 
-  /// 点黄色 FAB 的动作：新建当前标签页对应的对象。
+  /// @brief 点黄色 FAB 的动作：新建当前标签页对应的对象。
   final VoidCallback onNew;
 
-  /// 空状态是否再套一层 16dp 内边距。
+  /// @brief 空状态是否再套一层 16dp 内边距。
   ///
   /// 只有 `identity_list.xml` 的 `@id/empty` 自己带了
   /// `android:padding="@dimen/activity_padding"`，另外两页没有。
   /// 这一层会让标题从 994px 下移到 1011px（实测值）。
   final bool emptyOuterPadding;
 
-  /// FAB 的无障碍描述文案键。
+  /// @brief FAB 的无障碍描述文案键。
   ///
   /// 原版三个标签页的 FAB（`fab_new_connection` / `fab_new_identity` /
   /// `fab_new_portforward`）都**没有**内容描述，uiautomator 抓到的
   /// `content-desc` 是空的。这里按各自语义补上，纯无障碍、不影响像素。
   final String? newTooltip;
 
-  /// 空状态标题字号，来自 `@dimen/text_heading`。
+  /// @brief 空状态标题字号，来自 `@dimen/text_heading`。
   static const double emptyTitleSize = 36;
 
-  /// `activity_padding`，空状态的内边距。
+  /// @brief `activity_padding`，空状态的内边距。
   static const double padding = 16;
 
-  /// FAB 外边距，来自 `layout_margin="16.0dp"`。
+  /// @brief FAB 外边距，来自 `layout_margin="16.0dp"`。
   static const double fabMargin = 16;
 
+  /// @brief 构建列表 + 空状态 + 右下角黄色新建 FAB。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -114,22 +119,24 @@ class PagerList extends StatelessWidget {
   }
 }
 
-/// 原版里空状态有**两套**互不相同的布局，两套都复刻在这里。
+/// @brief 原版里空状态有**两套**互不相同的布局，两套都复刻在这里。
 ///
 /// 之所以要区分，是因为它们在竖直方向的行为完全不同：
 /// `tabs` 用权重把内容压在屏幕下方 70% 处，`centered` 则是整块居中。
 enum PagerEmptyStyle {
-  /// 通讯录三页（`address_list.xml` / `identity_list.xml` / `port_forwards.xml`）：
+  /// @brief 通讯录三页（`address_list.xml` / `identity_list.xml` /
+  /// `port_forwards.xml`）：
   /// 竖直 `LinearLayout`，一个 `FrameLayout` 占位 `layout_weight="0.3"`，
   /// 内容区 `layout_weight="0.7"`。
   tabs,
 
-  /// 片段等独立列表页（`pager_list.xml`，基类 `xh0` 用 `setContentView` 加载）：
+  /// @brief 片段等独立列表页（`pager_list.xml`，基类 `xh0` 用 `setContentView`
+  /// 加载）：
   /// 整块竖直居中，标题带 `layout_marginTop="-40.0dp"`、与正文间距 8dp。
   centered,
 }
 
-/// 空状态。
+/// @brief 空状态。
 ///
 /// ## `tabs` 样式，严格照 `res/layout/address_list.xml` 的 `@id/empty`
 ///
@@ -182,6 +189,7 @@ enum PagerEmptyStyle {
 /// **-20dp**，与文字高度无关 —— 所以「居中 + 整体上移 20dp」是精确等价，
 /// 不是近似。
 class PagerEmptyState extends StatelessWidget {
+  /// @brief 用标题、正文、布局样式与外层内边距构造空状态。
   const PagerEmptyState({
     super.key,
     required this.title,
@@ -190,25 +198,30 @@ class PagerEmptyState extends StatelessWidget {
     this.outerPadding = false,
   });
 
+  /// @brief 空状态标题。
   final String title;
+  /// @brief 空状态正文。
   final String message;
+  /// @brief 用哪一套空状态布局，见 [PagerEmptyStyle]。
   final PagerEmptyStyle style;
 
-  /// 只对 [PagerEmptyStyle.tabs] 有意义：是否再套一层 16dp 内边距
+  /// @brief 只对 [PagerEmptyStyle.tabs] 有意义：是否再套一层 16dp 内边距
   /// （`identity_list.xml` 的 `@id/empty` 自带 `android:padding`）。
   final bool outerPadding;
 
-  /// 标题字号，来自 `@dimen/text_heading`。
+  /// @brief 标题字号，来自 `@dimen/text_heading`。
   static const double titleSize = PagerList.emptyTitleSize;
 
-  /// 副标题在原版里没有写 `textSize`，用的是主题默认值 14sp
+  /// @brief 副标题在原版里没有写 `textSize`，用的是主题默认值 14sp
   /// （实测字形带高 36px ≈ 0.95em × 14sp）。
   static const double messageSize = 14;
 
-  /// Android 单行 `TextView` 的框高系数：行高 1.172em + `includeFontPadding`
+  /// @brief Android 单行 `TextView` 的框高系数：行高 1.172em +
+  /// `includeFontPadding`
   /// 约 0.19em ≈ **1.362em**（36sp 实测框高 127px）。
   static const double lineBoxHeight = 1.362;
 
+  /// @brief 按 [style] 分派到两套空状态布局。
   @override
   Widget build(BuildContext context) {
     return switch (style) {
@@ -217,6 +230,7 @@ class PagerEmptyState extends StatelessWidget {
     };
   }
 
+  /// @brief tabs 样式：0.3 占位 + 0.7 内容，文字压到屏幕下方。
   Widget _buildTabs(BuildContext context) {
     final palette = context.palette;
     return Padding(
@@ -246,6 +260,7 @@ class PagerEmptyState extends StatelessWidget {
     );
   }
 
+  /// @brief centered 样式：整块居中后整体上移 20dp。
   Widget _buildCentered(BuildContext context) {
     final palette = context.palette;
     return Center(
@@ -279,6 +294,7 @@ class PagerEmptyState extends StatelessWidget {
     );
   }
 
+  /// @brief 居中标题（@dimen/text_heading，36sp）。
   Widget _title(JuicePalette palette) => Text(
     title,
     textAlign: TextAlign.center,
@@ -289,6 +305,7 @@ class PagerEmptyState extends StatelessWidget {
     ),
   );
 
+  /// @brief 正文，用上下内边距补 includeFontPadding。
   Widget _message(JuicePalette palette) => Padding(
     // 正文往往是多行：`includeFontPadding` 只加在整段的首行上方与末行下方，
     // 不加在行与行之间，所以这里不能用 `height` 放大行距（那会把两行之间的
@@ -303,7 +320,7 @@ class PagerEmptyState extends StatelessWidget {
   );
 }
 
-/// 首页卡片列表用的行。
+/// @brief 首页卡片列表用的行。
 ///
 /// 原版 `res/layout/card_list_item.xml`：整行高 `@dimen/list_item_height`
 /// （**72dp**），标题 `@dimen/text_item_title`（**16sp**）/ 颜色
@@ -312,6 +329,7 @@ class PagerEmptyState extends StatelessWidget {
 /// 图标色 `@color/icon_item`。按下反馈是 `card_item_pressed.xml`
 /// —— 左右 inset 3dp、上下 4dp、圆角 2dp、实心 `@color/accent_lighter_transparent`。
 class JuiceListItem extends StatelessWidget {
+  /// @brief 用标题与可选的副标题、图标、回调构造列表行。
   const JuiceListItem({
     super.key,
     required this.title,
@@ -323,21 +341,31 @@ class JuiceListItem extends StatelessWidget {
     this.onLongPress,
   });
 
+  /// @brief 行标题。
   final String title;
+  /// @brief 行副标题；null 表示不显示。
   final String? subtitle;
+  /// @brief 左侧图标槽（40dp）。
   final Widget? leading;
+  /// @brief 左侧图标颜色；null 时用 textHeading。
   final Color? leadingColor;
+  /// @brief 行尾插槽（如端口转发页的开关）。
   final Widget? trailing;
+  /// @brief 点击回调。
   final VoidCallback? onTap;
+  /// @brief 长按回调，本页用来弹上下文菜单。
   final VoidCallback? onLongPress;
 
-  /// 行高，来自 `@dimen/list_item_height`。
+  /// @brief 行高，来自 `@dimen/list_item_height`。
   static const double height = 72;
 
-  /// 标题/副标题字号，来自 `@dimen/text_item_title` / `text_item_subtitle`。
+  /// @brief 标题/副标题字号，来自 `@dimen/text_item_title` /
+  /// `text_item_subtitle`。
   static const double titleSize = 16;
+  /// @brief 副标题字号 12sp。
   static const double subtitleSize = 12;
 
+  /// @brief 构建 72dp 高的卡片列表行。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -412,13 +440,15 @@ class JuiceListItem extends StatelessWidget {
   }
 }
 
-/// 列表行之间的分隔线。
+/// @brief 列表行之间的分隔线。
 ///
 /// 原版 `@drawable/highlight` 是空 selector，所以**不画线**；
 /// 需要分隔感时由各页面自行决定是否使用 `Divider`。
 class JuiceInvisibleDivider extends StatelessWidget {
+  /// @brief 构造一条不画线的 0.5dp 占位分隔。
   const JuiceInvisibleDivider({super.key});
 
+  /// @brief 返回一条 0.5dp 高的透明占位。
   @override
   Widget build(BuildContext context) => const SizedBox(height: 0.5);
 }

@@ -9,7 +9,7 @@ import 'juice_colors.dart';
 import 'juice_theme.dart';
 import 'settings_controller.dart';
 
-/// 应用根 widget。
+/// @brief 应用根 widget。
 ///
 /// 负责把「数据库 / 设置 / 资源数组 / 文案」四样东西注入 widget 树，
 /// 并让主题跟随 `theme:dark` 设置实时切换。
@@ -19,6 +19,7 @@ import 'settings_controller.dart';
 /// 由 [JuiceTheme] 分别构建，再按当前明暗挑一套 [JuicePalette] 交给
 /// [JuicePaletteScope]。
 class JuiceApp extends StatefulWidget {
+  /// @brief 创建应用根 widget。
   const JuiceApp({
     super.key,
     required this.database,
@@ -27,26 +28,33 @@ class JuiceApp extends StatefulWidget {
     required this.strings,
   });
 
+  /// @brief 数据库连接，供各页面读写连接与凭据等数据。
   final JuiceDatabase database;
+  /// @brief 应用设置，页面通过它读写 `config` 键。
   final SettingsController settings;
+  /// @brief 反编译出的原版资源表。
   final AppResources resources;
+  /// @brief 界面文案，供 `context.s()` 取用。
   final JuiceStrings strings;
 
+  /// @brief 创建应用根 widget 对应的 State。
   @override
   State<JuiceApp> createState() => _JuiceAppState();
 }
 
+/// @brief 应用根状态：跟随主题重建，并负责应用锁的自动上锁。
 class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
-  /// 用它在任意时刻把解锁页压到导航栈顶（[PinLockScreen.show] 需要一个
+  /// @brief 用它在任意时刻把解锁页压到导航栈顶（[PinLockScreen.show] 需要一个
   /// 位于 Navigator 之下的 context）。
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
-  /// 进入后台的时刻，用来和 `pinlock:timeout` 比较。
+  /// @brief 进入后台的时刻，用来和 `pinlock:timeout` 比较。
   DateTime? _pausedAt;
 
-  /// 解锁页是否已经在栈上，避免重复压栈。
+  /// @brief 解锁页是否已经在栈上，避免重复压栈。
   bool _lockVisible = false;
 
+  /// @brief 注册生命周期观察者，并在首帧后排一次上锁检查。
   @override
   void initState() {
     super.initState();
@@ -58,12 +66,14 @@ class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) => _lockIfNeeded());
   }
 
+  /// @brief 注销生命周期观察者。
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  /// @brief 系统切换明暗时，仅在「跟随系统」下重建。
   @override
   void didChangePlatformBrightness() {
     if (widget.settings.themeMode == AppThemeMode.automatic) {
@@ -71,6 +81,7 @@ class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
     }
   }
 
+  /// @brief 进入后台时记下时刻，回到前台且超过超时时间就重新上锁。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
@@ -93,7 +104,7 @@ class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
     }
   }
 
-  /// 设了应用锁且当前没有解锁页在栈上时，压入解锁页。
+  /// @brief 设了应用锁且当前没有解锁页在栈上时，压入解锁页。
   void _lockIfNeeded() {
     if (!mounted) return;
     if (!widget.settings.pinLockEnabled) return;
@@ -108,7 +119,7 @@ class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
     });
   }
 
-  /// 当前是否使用暗色。
+  /// @brief 当前是否使用暗色。
   ///
   /// 这里不去读 `Theme.of(context)`，因为本 widget 位于 [MaterialApp] 之上；
   /// 直接按设置项 + 平台亮度推导，顺序上更可靠。
@@ -120,6 +131,7 @@ class _JuiceAppState extends State<JuiceApp> with WidgetsBindingObserver {
               Brightness.dark,
       };
 
+  /// @brief 构建 `MaterialApp`，注入主题、调色板与文案。
   @override
   Widget build(BuildContext context) {
     // `SettingsController.themeMode` 是应用自己的枚举，

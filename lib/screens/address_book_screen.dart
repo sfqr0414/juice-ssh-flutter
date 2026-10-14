@@ -13,7 +13,7 @@ import 'connections_screen.dart';
 import 'identities_screen.dart';
 import 'port_forwards_screen.dart';
 
-/// 「通讯录」三标签页 —— 对应原版
+/// @brief 「通讯录」三标签页 —— 对应原版
 /// `com.sonelli.juicessh.activities.AddressBookActivity`。
 ///
 /// 结构与原版 `res/layout/address_book.xml` 一致：一个横向可滑动的
@@ -67,27 +67,35 @@ import 'port_forwards_screen.dart';
 /// （见 `port_forwards.xml`，正常列表的 `@id/empty` 默认 `visibility="gone"`），
 /// 本复刻按需求把端口转发做成了可用功能，属有意偏离。
 class AddressBookScreen extends StatefulWidget {
+  /// @brief 创建通讯录页 widget。
   const AddressBookScreen({super.key});
 
+  /// @brief 创建通讯录页的状态对象。
   @override
   State<AddressBookScreen> createState() => _AddressBookScreenState();
 }
 
+/// @brief 通讯录页的状态：当前标签序号与 Pager 控制器。
 class _AddressBookScreenState extends State<AddressBookScreen> {
-  /// 默认停在 Connections（页序 1），见类文档。
+  /// @brief 默认停在 Connections（页序 1），见类文档。
   static const int _initialPage = 1;
 
+  /// @brief 三页 ViewPager 的控制器，初始页为 Connections。
   final PageController _controller =
       PageController(initialPage: _initialPage);
+  /// @brief 当前标签页序号，用于决定是否显示溢出按钮。
   int _index = _initialPage;
 
+  /// @brief 释放 Pager 控制器。
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
-  /// 新建分组。对应溢出菜单里的 `new_group`。
+  /// @brief 新建分组。
+  ///
+  /// 对应溢出菜单里的 `new_group`。
   Future<void> _newGroup() async {
     final s = context.s;
     final name = await JuiceDialogs.promptForText(
@@ -98,7 +106,9 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
     await JuiceDatabase.instance.saveGroup(ConnectionGroup(name: name.trim()));
   }
 
-  /// 溢出菜单。只有 Connections 页有可见项，见类文档。
+  /// @brief 溢出菜单。
+  ///
+  /// 只有 Connections 页有可见项，见类文档。
   ///
   /// `menu_item_new_connection` 是 `android:visible="false"` 的死项，
   /// 所以展开后只剩 `new_group` 一项。
@@ -126,6 +136,7 @@ class _AddressBookScreenState extends State<AddressBookScreen> {
     if (action == 'new_group') await _newGroup();
   }
 
+  /// @brief 构建顶部标签条与三页 ViewPager。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

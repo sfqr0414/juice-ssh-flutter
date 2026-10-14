@@ -14,7 +14,7 @@ import 'dart:async';
 import 'port_forward_editor_screen.dart';
 import '../ssh/port_forward_registry.dart';
 
-/// 端口转发列表页 —— 对应原版 `MainActivity` 的第三个标签页
+/// @brief 端口转发列表页 —— 对应原版 `MainActivity` 的第三个标签页
 /// （`AddressBookActivity` 的 ViewPager 第三页）。
 ///
 /// 依据（全部来自反编译资源，逐条可核对）：
@@ -72,6 +72,7 @@ import '../ssh/port_forward_registry.dart';
 ///   为了不摆一个点不动的假开关，[PortForwardListItem] 只把它做成可选插槽
 ///   `trailing`，本页默认不传。
 class PortForwardsScreen extends StatefulWidget {
+  /// @brief 创建端口转发列表页。
   const PortForwardsScreen({
     super.key,
     this.showScaffold = false,
@@ -79,24 +80,26 @@ class PortForwardsScreen extends StatefulWidget {
     this.onEditPortForward,
   });
 
-  /// 是否自带 `Scaffold` / `AppBar`。
+  /// @brief 是否自带 `Scaffold` / `AppBar`。
+  ///
   ///
   /// 原版这一页是 `AddressBookActivity` 里的一个 ViewPager 页面，
   /// ActionBar 归 Activity 所有，所以默认（false）只提供 body。
   final bool showScaffold;
 
-  /// 副标题样式，见 [PortForwardRowStyle]。
+  /// @brief 副标题样式，见 [PortForwardRowStyle]。
   final PortForwardRowStyle rowStyle;
 
-  /// 点击行时的回调；默认自己 push [PortForwardEditorScreen]。
+  /// @brief 点击行时的回调；默认自己 push [PortForwardEditorScreen]。
   final void Function(BuildContext context, PortForward forward)?
   onEditPortForward;
 
+  /// @brief 创建本页的 State。
   @override
   State<PortForwardsScreen> createState() => PortForwardsScreenState();
 }
 
-/// 端口转发列表行的副标题样式。
+/// @brief 端口转发列表行的副标题样式。
 ///
 /// 原版适配器（`sh0.smali`）的 `getView` 把副标题设为
 /// `@string/via_connection_string`（"via %s"）填上连接名，**不是**端口映射说明。
@@ -108,33 +111,37 @@ class PortForwardsScreen extends StatefulWidget {
 /// * [viaConnection] —— 原版列表行为：`via <连接名>`；
 /// * [forwardDescription] —— 端口映射说明，复用原版真实存在的三条文案键。
 enum PortForwardRowStyle {
+  /// @brief 原版列表行为：`via <连接昵称或地址>`。
+  ///
   /// 原版列表行为：`via <连接昵称或地址>`（`@string/via_connection_string`）。
   viaConnection,
 
-  /// 端口映射说明，取值自 `PortForward.t(Context)` 的真实格式串
+  /// @brief 端口映射说明，取值自 `PortForward.t(Context)` 的真实格式串
+  ///
   /// （`local_forward_description_short` / `remote_forward_description_short`
   /// / `socks_forward_description`）。
   forwardDescription,
 }
 
-/// 端口转发列表页的 ActionBar 动作。
+/// @brief 端口转发列表页的 ActionBar 动作。
 ///
 /// `res/menu/menu_addressbook_portforwards.xml` 只有一个条目：
 /// `menu_item_new_portforward` → `@string/new_port_forward`，图标
 /// `@drawable/ic_new`（白色加号），`app:showAsAction="ifRoom"`
 /// （`android:visible="false"`，由代码按当前标签页打开）。
 class PortForwardsActions {
+  /// @brief 私有构造：这个类只提供静态成员。
   const PortForwardsActions._();
 
-  /// 列表标题键。原版这一页的页面标题是在 Java 的 `PagerAdapter` 里设的
+  /// @brief 列表标题键。原版这一页的页面标题是在 Java 的 `PagerAdapter` 里设的
   /// （`docs/ui-spec.md` §4.1 标为 UNRESOLVED），这里取资源里语义最贴切的
   /// `@string/port_forwards`（"Port Forwards"）。
   static const String titleKey = 'port_forwards';
 
-  /// 新建端口转发菜单项的标题键，`@string/new_port_forward`。
+  /// @brief 新建端口转发菜单项的标题键，`@string/new_port_forward`。
   static const String newPortForwardKey = 'new_port_forward';
 
-  /// 新建端口转发菜单项，与 `menu_addressbook_portforwards.xml` 等价的
+  /// @brief 新建端口转发菜单项，与 `menu_addressbook_portforwards.xml` 等价的
   /// Flutter 写法（`@drawable/ic_new` 是一个加号 → `Icons.add`）。
   static Widget newPortForwardButton(
     BuildContext context,
@@ -148,7 +155,7 @@ class PortForwardsActions {
   }
 }
 
-/// 端口转发列表行 —— 可复用的列表行组件（本文件导出，供标签页宿主
+/// @brief 端口转发列表行 —— 可复用的列表行组件（本文件导出，供标签页宿主
 /// 与其它页面复用）。
 ///
 /// 度量来自 `res/layout/port_forward_item.xml`：
@@ -169,6 +176,7 @@ class PortForwardsActions {
 /// 放进 `Expanded`，再把 [trailing] 贴在右侧，对应原版
 /// `layout_toLeftOf="@id/toggleIndicator"` 的关系。
 class PortForwardListItem extends StatelessWidget {
+  /// @brief 创建一行端口转发列表行。
   const PortForwardListItem({
     super.key,
     required this.title,
@@ -178,17 +186,24 @@ class PortForwardListItem extends StatelessWidget {
     this.onLongPress,
   });
 
+  /// @brief 行标题，对应原版 `@id/itemTitle`。
   final String title;
+
+  /// @brief 行副标题，对应原版 `@id/itemSubtitle`。
   final String? subtitle;
 
-  /// 行尾控件。原版这里是 `SwitchCompat id=@id/toggleIndicator`。
+  /// @brief 行尾控件。原版这里是 `SwitchCompat id=@id/toggleIndicator`。
   ///
   /// 本页默认不传（原因见 [PortForwardsScreen] 的类注释）。
   final Widget? trailing;
 
+  /// @brief 点击行的回调。
   final VoidCallback? onTap;
+
+  /// @brief 长按行的回调。
   final VoidCallback? onLongPress;
 
+  /// @brief 构建「可点行 + 可选行尾控件」的一行。
   @override
   Widget build(BuildContext context) {
     final trailingWidget = trailing;
@@ -218,18 +233,22 @@ class PortForwardListItem extends StatelessWidget {
   }
 }
 
-/// 端口转发列表页。
+/// @brief 端口转发列表页。
 class PortForwardsScreenState extends State<PortForwardsScreen> {
+  /// @brief 数据库单例，本页读写端口转发与连接的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 当前列表数据，来自 `JuiceDatabase.portForwards()`。
   List<PortForward> _forwards = const <PortForward>[];
 
-  /// 承载连接的字典。原版列表行的副标题就是从这里取显示名
+  /// @brief 承载连接的字典。原版列表行的副标题就是从这里取显示名
   /// （`Connection.w()` = 昵称非空取昵称，否则取地址）。
   Map<int, Connection> _connections = const <int, Connection>{};
 
+  /// @brief 是否仍在读库；加载期间显示转圈。
   bool _loading = true;
 
+  /// @brief 订阅转发注册表的变化并加载列表。
   @override
   void initState() {
     super.initState();
@@ -238,17 +257,19 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     reload();
   }
 
+  /// @brief 取消订阅转发注册表的变化。
   @override
   void dispose() {
     PortForwardRegistry.instance.removeListener(_onForwardsChanged);
     super.dispose();
   }
 
+  /// @brief 转发开关状态变化时的监听回调，触发重建。
   void _onForwardsChanged() {
     if (mounted) setState(() {});
   }
 
-  /// 拨动一条转发的开关。
+  /// @brief 拨动一条转发的开关。
   ///
   /// 原版是 `sh0.i()` 翻转开关外观、再由开关的 checked-change 监听真正
   /// 建立/断开；这里直接用 [PortForwardService.toggle] 一次做完。
@@ -262,7 +283,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     if (mounted) setState(() {});
   }
 
-  /// 重新读取端口转发列表与连接表。
+  /// @brief 重新读取端口转发列表与连接表。
   ///
   /// 宿主（标签页）可以在新建/编辑之后调用它刷新列表。
   Future<void> reload() async {
@@ -280,12 +301,12 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
 
   // ------------------------------------------------------------ 展示辅助 --
 
-  /// `Connection.w()` 的等价实现（`models/Connection.smali`）：
+  /// @brief `Connection.w()` 的等价实现（`models/Connection.smali`）：
   /// 昵称非空则返回昵称，否则返回地址。
   String _connectionDisplayName(Connection connection) =>
       connection.nickname.isNotEmpty ? connection.nickname : connection.address;
 
-  /// `PortForward.connection` 对应的连接；取不到时返回 null
+  /// @brief `PortForward.connection` 对应的连接；取不到时返回 null
   /// （原版此时副标题显示 `@string/invalid_connection`）。
   Connection? _connectionOf(PortForward forward) {
     final id = forward.connectionId;
@@ -293,7 +314,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     return _connections[id];
   }
 
-  /// 原版适配器的副标题：`@string/via_connection_string`（"via %s"），
+  /// @brief 原版适配器的副标题：`@string/via_connection_string`（"via %s"），
   /// 参数是承载连接的显示名；取不到连接时用 `@string/invalid_connection`。
   String _viaSubtitle(PortForward forward) {
     final s = context.s;
@@ -304,7 +325,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     ]);
   }
 
-  /// `PortForward.t(Context)` 的等价实现（`PortForward.smali` 第 226-433 行）。
+  /// @brief `PortForward.t(Context)` 的等价实现。
+  ///
+  /// 对应 `PortForward.smali` 第 226-433 行。
   ///
   /// 三条分支与参数顺序**逐项照抄**：
   /// * `mode == 2`（`MODE_SOCKS`）→ `socks_forward_description`
@@ -345,7 +368,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     };
   }
 
-  /// 显示用的目标主机：`127.0.0.1` / `localhost` 会被换成连接地址。
+  /// @brief 显示用的目标主机：`127.0.0.1` / `localhost` 会被换成连接地址。
   ///
   /// 对应 `PortForward.t(Context)` 里的就地改写，但这里不改模型
   /// （`PortForward.copyWith` 也没有 `clearHost` 开关）。
@@ -358,6 +381,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     return host;
   }
 
+  /// @brief 按 [PortForwardsScreen.rowStyle] 取行副标题文案。
   String _subtitle(PortForward forward) => switch (widget.rowStyle) {
     PortForwardRowStyle.viaConnection => _viaSubtitle(forward),
     PortForwardRowStyle.forwardDescription => _descriptionSubtitle(forward),
@@ -365,7 +389,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
 
   // ---------------------------------------------------------- 交互 --
 
-  /// 点击行 → 编辑页；新建 → `@string/new_port_forward`。
+  /// @brief 点击行 → 编辑页；新建 → `@string/new_port_forward`。
   Future<void> _openEditor(PortForward? forward) async {
     final handler = widget.onEditPortForward;
     if (handler != null && forward != null) {
@@ -381,7 +405,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     if (saved == true) await reload();
   }
 
-  /// 长按行 → 上下文菜单。
+  /// @brief 长按行 → 上下文菜单。
   ///
   /// 条目与顺序来自 `res/menu/port_forward_context_menu.xml`（edit / duplicate /
   /// homescreen / delete 四项，与复刻现有条目一致）。
@@ -438,7 +462,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     }
   }
 
-  /// 复制 —— 对应 `@string/duplicate`。
+  /// @brief 复制 —— 对应 `@string/duplicate`。
   ///
   /// 新名字用原版真实的 `@string/copy_of`（"Copy of %s"），
   /// 做法与 `connections_screen.dart` 的复制一致。
@@ -453,7 +477,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     await reload();
   }
 
-  /// 主屏快捷方式 —— 对应 `@string/homescreen_shortcut`。
+  /// @brief 主屏快捷方式 —— 对应 `@string/homescreen_shortcut`。
   ///
   /// 原版会往 Android 桌面写一个快捷方式；失败（设备不支持）时 toast
   /// `@string/homescreen_shortcuts_not_supported`。Flutter 侧要真正实现需要
@@ -467,7 +491,9 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     );
   }
 
-  /// 删除 —— 对应 `@string/delete`，删除前用 [JuiceDialogs.confirm] 确认。
+  /// @brief 删除 —— 对应 `@string/delete`。
+  ///
+  /// 删除前用 [JuiceDialogs.confirm] 确认。
   Future<void> _delete(PortForward forward) async {
     final s = context.s;
     final confirmed = await JuiceDialogs.confirm(
@@ -484,6 +510,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建页面；`showScaffold` 为 false 时只给 body。
   @override
   Widget build(BuildContext context) {
     final body = _buildBody(context);
@@ -503,6 +530,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     );
   }
 
+  /// @brief 构建列表、空状态与新建 FAB。
   Widget _buildBody(BuildContext context) {
     final s = context.s;
     final palette = context.palette;
@@ -577,7 +605,7 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
     );
   }
 
-  /// 空状态 —— `port_forwards.xml` 的 `@id/empty`。
+  /// @brief 空状态 —— `port_forwards.xml` 的 `@id/empty`。
   ///
   /// 结构：0.3 权重的空白 + 0.7 权重的文字块（两块都是 `h=0dp` +
   /// `layout_weight`）；文字块 `padding=@dimen/activity_padding`(16dp)；
@@ -604,6 +632,6 @@ class PortForwardsScreenState extends State<PortForwardsScreen> {
   }
 }
 
-/// 端口转发行长按菜单的动作 id，取值与
+/// @brief 端口转发行长按菜单的动作 id，取值与
 /// `res/menu/port_forward_context_menu.xml` 的 `android:id` 一致。
 enum _PortForwardMenuAction { edit, duplicate, homescreen, delete }

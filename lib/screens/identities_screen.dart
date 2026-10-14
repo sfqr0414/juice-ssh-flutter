@@ -10,7 +10,7 @@ import '../widgets/juice_popup_menu.dart';
 import '../widgets/pager_list.dart';
 import 'identity_editor_screen.dart';
 
-/// 身份（Identity）列表页 —— 对应原版 `MainActivity` 的第二个标签页。
+/// @brief 身份（Identity）列表页 —— 对应原版 `MainActivity` 的第二个标签页。
 ///
 /// 原版这一页由两个类组成：
 /// * `IdentityListAdapter`（反编译后落在 `com/sonelli/nh0.smali`，其内部类
@@ -50,14 +50,14 @@ import 'identity_editor_screen.dart';
 /// [IdentityRowStyle.userSummary]。默认用原版的连接数文案
 /// （[IdentityRowStyle.connectionUsage]）。
 enum IdentityRowStyle {
-  /// 原版行为：`Not used` / `Used by 3 connections`。
+  /// @brief 原版行为：`Not used` / `Used by 3 connections`。
   connectionUsage,
 
-  /// 任务书要求：`用户名 · 有私钥 / 无私钥`。
+  /// @brief 任务书要求：`用户名 · 有私钥 / 无私钥`。
   userSummary,
 }
 
-/// 身份列表行 —— 可复用的列表行组件，供身份列表/片段列表等页面复用。
+/// @brief 身份列表行 —— 可复用的列表行组件，供身份列表/片段列表等页面复用。
 ///
 /// 度量全部来自原版：
 /// * 行高 `@dimen/list_item_height` = **72dp**
@@ -68,6 +68,7 @@ enum IdentityRowStyle {
 /// * 左右内边距 `@dimen/activity_padding` = **16dp**
 /// * 按压反馈 `@drawable/card_item.xml`（在 `@color/card_item_pressed` 上的 ripple）
 class CardListItem extends StatelessWidget {
+  /// @brief 创建一行 72dp 的列表行。
   const CardListItem({
     super.key,
     required this.title,
@@ -82,13 +83,13 @@ class CardListItem extends StatelessWidget {
          'leadingIcon 与 leadingIconGlyph 只能二选一',
        );
 
-  /// 行高，来自 `@dimen/list_item_height`。
+  /// @brief 行高，来自 `@dimen/list_item_height`。
   static const double height = 72;
 
-  /// 图标位宽度，来自 `@dimen/list_item_icon_width`。
+  /// @brief 图标位宽度，来自 `@dimen/list_item_icon_width`。
   static const double iconWidth = 40;
 
-  /// 图标与文字列之间的距离。
+  /// @brief 图标与文字列之间的距离。
   ///
   /// 原版是文字列 `LinearLayout` 上的 `paddingLeft="@dimen/activity_padding"`，
   /// 而它又 `layout_toRightOf="@id/itemIcon"`，所以标题的 x =
@@ -96,7 +97,7 @@ class CardListItem extends StatelessWidget {
   /// 实测原版片段列表 `itemTitle` 落在 `[189,317]`，与此一致。
   static const double iconGap = 16;
 
-  /// 标题/副标题的行高。
+  /// @brief 标题/副标题的行高。
   ///
   /// 原版两个 `TextView` 都是写死的 `layout_height="20dp"` +
   /// `gravity="center_vertical"`，两行合计 **40dp**；行的上下内边距各 16dp，
@@ -105,37 +106,44 @@ class CardListItem extends StatelessWidget {
   /// 两行会比原版矮 2.6dp，整块文字跟着往下错 4px）。
   static const double lineHeight = 20;
 
-  /// 标题字号，来自 `@dimen/text_item_title`。
+  /// @brief 标题字号，来自 `@dimen/text_item_title`。
   static const double titleSize = 16;
 
-  /// 副标题字号，来自 `@dimen/text_item_subtitle`。
+  /// @brief 副标题字号，来自 `@dimen/text_item_subtitle`。
   static const double subtitleSize = 12;
 
-  /// 左右内边距，来自 `@dimen/activity_padding`。
+  /// @brief 左右内边距，来自 `@dimen/activity_padding`。
   static const double horizontalPadding = 16;
 
+  /// @brief 行标题（昵称，退回用户名）。
   final String title;
 
+  /// @brief 行副标题；null 时该行只显示标题。
   final String? subtitle;
 
-  /// 左侧图标（Material 图标）。原版的图标位是 `FontAwesomeTextView`，
+  /// @brief 左侧图标（Material 图标）。
+  ///
+  /// 原版的图标位是 `FontAwesomeTextView`，
   /// 这里用等价语义的 Material 图标代替，因为本项目没有打进 FontAwesome 字体。
   final IconData? leadingIcon;
 
-  /// 左侧图标位直接渲染的字形（对应 `@string/icon_user` 这类 FontAwesome 码点）。
+  /// @brief 图标位直接渲染的字形（对应 `@string/icon_user`）。
   final String? leadingIconGlyph;
 
-  /// 图标绘制尺寸。
+  /// @brief 图标绘制尺寸。
   ///
   /// 原版身份列表行的图标实测：墨迹高 78px、黄像素 1689 —— 对应约 40dp 字号
   /// （图标位宽本来就是 40dp）。而片段列表行同一测量只有 296 个黄像素，与 24dp
   /// 吻合。所以尺寸按行给，默认沿用 24。
   final double leadingIconSize;
 
+  /// @brief 点击行的回调。
   final VoidCallback? onTap;
 
+  /// @brief 长按行的回调（弹出上下文菜单）。
   final VoidCallback? onLongPress;
 
+  /// @brief 构建一行 72dp 的列表行（图标 + 标题/副标题）。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -208,7 +216,7 @@ class CardListItem extends StatelessWidget {
     );
   }
 
-  /// 左侧图标位。
+  /// @brief 左侧图标位。
   ///
   /// 颜色取 `@color/icon_item` = `@color/accent_bold`：原版列表行里是这个色，
   /// 而 `card_list_item.xml` 的 `itemTextIcon` 用的是 `@color/card_icon_color`
@@ -229,21 +237,22 @@ class CardListItem extends StatelessWidget {
   }
 }
 
-/// 身份列表页的 ActionBar 动作。
+/// @brief 身份列表页的 ActionBar 动作。
 ///
 /// `res/menu/menu_addressbook_identities.xml` 里只有一个条目：
 /// `menu_item_new_identity` → `@string/new_identity`，图标 `@drawable/ic_new`，
 /// `app:showAsAction="ifRoom"`（`android:visible="false"`，由代码按当前标签页打开）。
 class IdentityListActions {
+  /// @brief 私有构造：这个类只提供静态成员。
   const IdentityListActions._();
 
-  /// 标题键，`@string/identities`。
+  /// @brief 标题键，`@string/identities`。
   static const String titleKey = 'identities';
 
-  /// 新建身份菜单项的标题键，`@string/new_identity`。
+  /// @brief 新建身份菜单项的标题键，`@string/new_identity`。
   static const String newIdentityKey = 'new_identity';
 
-  /// 新建身份菜单项，与 `menu_addressbook_identities.xml` 等价的 Flutter 写法。
+  /// @brief 新建身份菜单项（与 `menu_addressbook_identities.xml` 等价）。
   static Widget newIdentityButton(
     BuildContext context,
     VoidCallback onPressed,
@@ -256,7 +265,7 @@ class IdentityListActions {
   }
 }
 
-/// 身份列表页。
+/// @brief 身份列表页。
 ///
 /// 默认只提供 **body**（外层 `Scaffold` 由标签页宿主提供，与原版一致：
 /// 原版身份页是 `AddressBookActivity` 里的一个 ViewPager 页面，
@@ -266,6 +275,7 @@ class IdentityListActions {
 /// （标题 `@string/identities`，右侧 `new_identity` 图标 `Icons.add`），
 /// 便于单独打开这一页做对照。
 class IdentitiesScreen extends StatefulWidget {
+  /// @brief 创建身份列表页。
   const IdentitiesScreen({
     super.key,
     this.showScaffold = false,
@@ -273,30 +283,37 @@ class IdentitiesScreen extends StatefulWidget {
     this.onEditIdentity,
   });
 
-  /// 是否自带 `Scaffold` / `AppBar`。
+  /// @brief 是否自带 `Scaffold` / `AppBar`。
   final bool showScaffold;
 
-  /// 副标题样式，见 [IdentityRowStyle]。
+  /// @brief 副标题样式，见 [IdentityRowStyle]。
   final IdentityRowStyle rowStyle;
 
-  /// 点击行时的回调；默认自己 push [IdentityEditorScreen]。
+  /// @brief 点击行时的回调；默认自己 push [IdentityEditorScreen]。
   final void Function(BuildContext context, Identity identity)? onEditIdentity;
 
+  /// @brief 创建本页的 State。
   @override
   State<IdentitiesScreen> createState() => IdentitiesScreenState();
 }
 
+/// @brief 身份列表页的 State：加载身份与引用计数并渲染列表。
 class IdentitiesScreenState extends State<IdentitiesScreen> {
+  /// @brief 数据库单例，本页读写身份的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 当前身份列表（含新建/编辑后的最新结果）。
   List<Identity> _identities = const <Identity>[];
 
-  /// 身份 id → 引用它的连接数量。对应原版 `IdentityListAdapter$b` 的统计。
+  /// @brief 身份 id → 引用它的连接数量。
+  ///
+  /// 对应原版 `IdentityListAdapter$b` 的统计。
   Map<int, int> _usage = const <int, int>{};
 
+  /// @brief 是否仍在载入数据。
   bool _loading = true;
 
-  /// 是否已经因为 `didChangeDependencies` 刷过一次。
+  /// @brief 是否已经因为 `didChangeDependencies` 刷过一次。
   ///
   /// 首次加载就走这条路径（`didChangeDependencies` 必定在 `initState` 之后执行），
   /// 所以 `initState` 里不再重复查库。这样写还顺带解决了另一个问题：
@@ -305,6 +322,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
   /// 于是在依赖变化时补一次刷新。
   bool _refreshedOnDependencyChange = false;
 
+  /// @brief 首次依赖变化时触发一次加载（等价于 `initState`）。
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -313,7 +331,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     reload();
   }
 
-  /// 重新读取身份列表与引用计数。
+  /// @brief 重新读取身份列表与引用计数。
   ///
   /// 宿主（标签页）可以在新建/编辑身份之后调用它刷新列表。
   Future<void> reload() async {
@@ -327,7 +345,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     });
   }
 
-  /// 一次查询统计出每个身份被多少条连接引用。
+  /// @brief 一次查询统计出每个身份被多少条连接引用。
   ///
   /// `connectionidentity` 表的列名是 `connection` / `identity`
   /// （见 `JuiceDatabase._schema`），对应原版 ORMLite 的字段名。
@@ -343,7 +361,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     };
   }
 
-  /// 原版 `IdentityListAdapter$b` 的副标题文案。
+  /// @brief 原版 `IdentityListAdapter$b` 的副标题文案。
   ///
   /// 依据 `nh0$b.smali`：
   /// * `count == 0` → `@string/not_used`
@@ -357,7 +375,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     return '${s('used_by')} $count $noun';
   }
 
-  /// 任务书要求的副标题：用户名 + 是否配置了私钥/密码。
+  /// @brief 任务书要求的副标题：用户名 + 是否配置了私钥/密码。
   ///
   /// 依据 `Identity` 的 `username` / `hasPrivateKey` / `hasPassword`
   /// （`lib/data/models.dart`），以及编辑页里 `@string/not_set` 的用法。
@@ -372,13 +390,14 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     return parts.join(' · ');
   }
 
+  /// @brief 按 [IdentityRowStyle] 选择副标题文案。
   String _subtitle(BuildContext context, Identity identity) =>
       switch (widget.rowStyle) {
         IdentityRowStyle.connectionUsage => _usageSubtitle(context, identity),
         IdentityRowStyle.userSummary => _userSubtitle(context, identity),
       };
 
-  /// 点击行 → 编辑页。
+  /// @brief 点击行 → 编辑页。
   Future<void> _openEditor(Identity identity) async {
     final handler = widget.onEditIdentity;
     if (handler != null) {
@@ -394,7 +413,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     await reload();
   }
 
-  /// 新建身份 —— 对应 `@string/new_identity` / FAB `@id/fab_new_identity`。
+  /// @brief 新建身份 —— 对应 `@string/new_identity` 菜单项与 FAB。
   Future<void> _createIdentity() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: (_) => const IdentityEditorScreen()),
@@ -403,7 +422,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     await reload();
   }
 
-  /// 长按行 → 上下文菜单。
+  /// @brief 长按行 → 上下文菜单。
   ///
   /// 条目来自 `res/menu/identity_context_menu.xml`，四项、无图标、
   /// `android:orderInCategory="100"`：
@@ -466,7 +485,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     }
   }
 
-  /// 导出私钥 / 公钥。
+  /// @brief 导出私钥 / 公钥。
   ///
   /// 说明（重要）：原版把密钥导出实现为「写到文件 + 分享 Intent」，
   /// 对应资源只有 `@string/export_private_key` / `@string/export_public_key`
@@ -499,6 +518,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     );
   }
 
+  /// @brief 确认后删除身份并刷新列表。
   Future<void> _delete(Identity identity, {required JuiceStrings s}) async {
     final confirmed = await JuiceDialogs.confirm(
       context,
@@ -514,13 +534,14 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     await reload();
   }
 
-  /// 标题 = `Identity.toString()`：昵称非空取昵称，否则取用户名。
+  /// @brief 标题 = `Identity.toString()`：昵称非空取昵称，否则取用户名。
   String _titleOf(Identity identity) {
     final nickname = identity.nickname;
     if (nickname.isNotEmpty) return nickname;
     return identity.username ?? '';
   }
 
+  /// @brief 构建页面主体；`showScaffold` 为 true 时再套一层 Scaffold。
   @override
   Widget build(BuildContext context) {
     final body = _buildBody(context);
@@ -537,6 +558,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     );
   }
 
+  /// @brief 构建列表 / 空状态 / FAB 组成的页面主体。
   Widget _buildBody(BuildContext context) {
     final s = context.s;
     final palette = context.palette;
@@ -610,7 +632,7 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
     );
   }
 
-  /// 空状态 —— `identity_list.xml` 的 `@id/empty`。
+  /// @brief 空状态 —— `identity_list.xml` 的 `@id/empty`。
   ///
   /// 结构：0.3 权重的空白 + 0.7 权重的文字块；标题
   /// `@dimen/text_heading`(36sp) / `@color/text_heading`，文案 `@string/no_identities`；
@@ -634,5 +656,5 @@ class IdentitiesScreenState extends State<IdentitiesScreen> {
   }
 }
 
-/// 身份行长按菜单的动作 id，取值与 `identity_context_menu.xml` 的 `android:id` 一致。
+/// @brief 身份行长按菜单的动作 id，取值同 `identity_context_menu.xml`。
 enum _IdentityMenuAction { edit, exportPrivateKey, exportPublicKey, delete }

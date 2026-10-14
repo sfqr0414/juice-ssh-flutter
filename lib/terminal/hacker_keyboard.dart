@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../app/i18n.dart';
 import 'escape_characters.dart';
 
-/// 终端下方的「黑客键盘」额外键行。
+/// @brief 终端下方的「黑客键盘」额外键行。
 ///
 /// 完全按原版 `res/layout/hacker_keyboard.xml`、
 /// `hacker_keyboard_function_keys.xml` 与 `hacker_keyboard_pager.xml` 复刻：
@@ -23,6 +23,7 @@ import 'escape_characters.dart';
 /// 按键只往外抛原始 tag（[KeyTag]），语义由终端页统一解释 ——
 /// 与原版「布局只写 tag、逻辑集中在 `keyboardPress`」的结构一致。
 class HackerKeyboard extends StatelessWidget {
+  /// @brief 构造额外键行，按下时往外抛 [KeyTag]。
   const HackerKeyboard({
     super.key,
     required this.onKeyTag,
@@ -33,32 +34,34 @@ class HackerKeyboard extends StatelessWidget {
     this.onToggleFunctionKeys,
   });
 
-  /// 抛出被按下按键的 tag。
+  /// @brief 抛出被按下按键的 tag。
   final ValueChanged<int> onKeyTag;
 
-  /// 当前是否停在功能键页。
+  /// @brief 当前是否停在功能键页。
   final bool showingFunctionKeys;
 
-  /// Ctrl 是否处于待生效状态（原版按下后按钮保持高亮）。
+  /// @brief Ctrl 是否处于待生效状态（原版按下后按钮保持高亮）。
   final bool ctrlArmed;
 
-  /// Alt 是否处于待生效状态。
+  /// @brief Alt 是否处于待生效状态。
   final bool altArmed;
 
-  /// 键面颜色。原版是 `TerminalThemedButton`，字色跟随终端前景色。
+  /// @brief 键面颜色。原版是 `TerminalThemedButton`，字色跟随终端前景色。
   final Color foreground;
 
-  /// 切换主键页 / 功能键页；不传则 Fn 键不响应。
+  /// @brief 切换主键页 / 功能键页；不传则 Fn 键不响应。
   final VoidCallback? onToggleFunctionKeys;
 
-  /// 键行总高度，取自 `hacker_keyboard_pager.xml` 的 `70.0dp`。
+  /// @brief 键行总高度，取自 `hacker_keyboard_pager.xml` 的 `70.0dp`。
   static const double height = 70;
 
-  /// 单行高度，`TableRow` 内每个键的 `35.0dp`。
+  /// @brief 单行高度，`TableRow` 内每个键的 `35.0dp`。
   static const double rowHeight = 35;
 
+  /// @brief 把按键 tag 转交给上层。
   void _press(int tag) => onKeyTag(tag);
 
+  /// @brief 构建键行：主键页或功能键页。
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -67,7 +70,7 @@ class HackerKeyboard extends StatelessWidget {
     );
   }
 
-  /// 主键页。
+  /// @brief 主键页。
   ///
   /// 第一行：`Esc | (/ | -)span2 | Home | ↑ | End | PgUp | Fn`
   /// 第二行：`Tab | Ctrl | Alt | ← | ↓ | → | PgDn | 键盘开关`
@@ -236,10 +239,11 @@ class HackerKeyboard extends StatelessWidget {
     );
   }
 
-  /// 功能键页：两行各 7 列，F1–F6 + 返回，F7–F12 + 键盘开关。
+  /// @brief 功能键页：两行各 7 列，F1–F6 + 返回，F7–F12 + 键盘开关。
   Widget _buildFunctionPage(BuildContext context) {
     final s = context.s;
 
+    /// @brief 构造 F[number] 功能键。
     Widget key(int number) => _Key(
           label: s('f$number'),
           tag: KeyTag.functionKey(number),
@@ -290,13 +294,14 @@ class HackerKeyboard extends StatelessWidget {
   }
 }
 
-/// 单个键。
+/// @brief 单个键。
 ///
 /// 对应原版的 `AutoRepeatButton` / `TerminalThemedButton` /
 /// `TerminalThemedImageButton` 三种：
 /// * [autoRepeat] 为 true 时按 `AutoRepeatButton` 的参数连发；
 /// * [armed] 为 true 时保持按下态背景，对应 `TerminalThemedButton.d(int)`。
 class _Key extends StatefulWidget {
+  /// @brief 构造一个键位。
   const _Key({
     this.label,
     this.icon,
@@ -310,40 +315,56 @@ class _Key extends StatefulWidget {
     required this.onPressed,
   });
 
+  /// @brief 键面文字；用图标时留空。
   final String? label;
+  /// @brief 键面图标；与 [label] 二选一。
   final IconData? icon;
+  /// @brief 无障碍与长按提示文案。
   final String? tooltip;
+  /// @brief 按下时往外抛的 [KeyTag]。
   final int tag;
+  /// @brief 键面字号，原版为 14sp 或 18sp。
   final double fontSize;
+  /// @brief 是否加粗（只有四个方向键为 true）。
   final bool bold;
+  /// @brief 是否连发，对应原版 `AutoRepeatButton`。
   final bool autoRepeat;
+  /// @brief 是否保持按下态高亮（Ctrl / Alt 待生效）。
   final bool armed;
+  /// @brief 键面颜色，取自终端前景色。
   final Color foreground;
+  /// @brief 按下回调，参数是本键的 [tag]。
   final ValueChanged<int> onPressed;
 
+  /// @brief 创建键的 State。
   @override
   State<_Key> createState() => _KeyState();
 }
 
+/// @brief 单个键的 State：处理按下、连发与高亮。
 class _KeyState extends State<_Key> {
-  /// `@drawable/keyboard` 的按下色 `#57FFFFFF`。
+  /// @brief `@drawable/keyboard` 的按下色 `#57FFFFFF`。
   static const Color _pressedColor = Color(0x57FFFFFF);
 
+  /// @brief 该键当前是否被按住。
   bool _pressed = false;
+  /// @brief 连发用的定时器。
   Timer? _repeatTimer;
 
-  /// `AutoRepeatButton` 的首次连发延迟。
+  /// @brief `AutoRepeatButton` 的首次连发延迟。
   static const Duration _repeatDelay = Duration(milliseconds: 500);
 
-  /// 连发间隔。
+  /// @brief 连发间隔。
   static const Duration _repeatInterval = Duration(milliseconds: 50);
 
+  /// @brief 释放时取消连发定时器。
   @override
   void dispose() {
     _repeatTimer?.cancel();
     super.dispose();
   }
 
+  /// @brief 按下：发送一次并按需开始连发。
   void _start() {
     setState(() => _pressed = true);
     widget.onPressed(widget.tag);
@@ -356,12 +377,14 @@ class _KeyState extends State<_Key> {
     });
   }
 
+  /// @brief 抬起：停止连发并取消高亮。
   void _stop() {
     _repeatTimer?.cancel();
     _repeatTimer = null;
     if (mounted) setState(() => _pressed = false);
   }
 
+  /// @brief 构建键面与按下底色。
   @override
   Widget build(BuildContext context) {
     final highlighted = _pressed || widget.armed;

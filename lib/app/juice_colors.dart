@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// 调色板 —— 逐项对应原版 JuiceSSH 3.2.2 的颜色资源。
+/// @brief 调色板 —— 逐项对应原版 JuiceSSH 3.2.2 的颜色资源。
 ///
 /// 亮色取自 `res/values/colors.xml`，暗色取自 `res/values-night/colors.xml`。
 /// 每个字段的注释里保留了原始资源名，方便与原版逐项核对。
 @immutable
 class JuicePalette {
+  /// @brief 创建调色板；各项颜色见下方字段注释。
   const JuicePalette({
     required this.isDark,
     required this.primaryBold,
@@ -35,53 +36,55 @@ class JuicePalette {
     required this.secondaryText,
   });
 
-  /// 原版用 `Theme.AppCompat.DayNight` + `values-night` 覆盖来表达暗色。
+  /// @brief 原版用 `Theme.AppCompat.DayNight` + `values-night` 覆盖来表达
+  /// 暗色。
   final bool isDark;
 
   // --- 品牌黄 ---
-  /// `@color/primary_bold`
+  /// @brief `@color/primary_bold`
   final Color primaryBold;
 
-  /// `@color/primary_darker` —— 也是 ActionBar 背景
+  /// @brief `@color/primary_darker` —— 也是 ActionBar 背景
   final Color primaryDarker;
 
-  /// `@color/primary_lighter`
+  /// @brief `@color/primary_lighter`
   final Color primaryLighter;
 
   // --- 强调色 ---
-  /// `@color/accent_bold`，同时是主题的 `colorAccent`
+  /// @brief `@color/accent_bold`，同时是主题的 `colorAccent`
   final Color accentBold;
 
-  /// `@color/accent_darker`
+  /// @brief `@color/accent_darker`
   final Color accentDarker;
 
-  /// `@color/accent_lighter`
+  /// @brief `@color/accent_lighter`
   final Color accentLighter;
 
-  /// `@color/accent_lighter_transparent`
+  /// @brief `@color/accent_lighter_transparent`
   final Color accentLighterTransparent;
 
   // --- 背景与按钮 ---
-  /// `@color/background`，也是 `android:windowBackground`
+  /// @brief `@color/background`，也是 `android:windowBackground`
   final Color background;
 
-  /// `@color/button_background`
+  /// @brief `@color/button_background`
   final Color buttonBackground;
 
-  /// `@color/button_stroke`
+  /// @brief `@color/button_stroke`
   final Color buttonStroke;
 
-  /// `@color/button_text`
+  /// @brief `@color/button_text`
   final Color buttonText;
 
   // --- 卡片 / 列表行 ---
-  /// `@color/card_item_background`
+  /// @brief `@color/card_item_background`
   final Color cardItemBackground;
 
-  /// `@color/card_item_divider`
+  /// @brief `@color/card_item_divider`
   final Color cardItemDivider;
 
-  /// 分组表单标题（`?android:listSeparatorTextViewStyle`）下方的整宽分隔线。
+  /// @brief 分组表单标题（`?android:listSeparatorTextViewStyle`）下方的
+  /// 整宽分隔线。
   ///
   /// 亮色为**实测值** `#E0E0E0`：`o_id.png` 的 y 396..400 / 987..991 各 5px
   /// @density 2.625 ≈ 2dp、x 42..1037 整宽；`o_ed.png` 另有 1567..1571 一条。
@@ -89,41 +92,44 @@ class JuicePalette {
   /// 编辑页可供实测，属未验证项。
   final Color formDivider;
 
-  /// `@color/card_item_pressed`
+  /// @brief `@color/card_item_pressed`
   final Color cardItemPressed;
 
   // --- 文字 ---
-  /// `@color/text_form`
+  /// @brief `@color/text_form`
   final Color textForm;
 
-  /// `@color/text_form_heading`
+  /// @brief `@color/text_form_heading`
   final Color textFormHeading;
 
-  /// `@color/text_heading`
+  /// @brief `@color/text_heading`
   final Color textHeading;
 
-  /// `@color/text_item_subtitle`
+  /// @brief `@color/text_item_subtitle`
   final Color textItemSubtitle;
 
-  /// `@color/text_item_title`
+  /// @brief `@color/text_item_title`
   final Color textItemTitle;
 
-  /// `@color/text_normal`
+  /// @brief `@color/text_normal`
   final Color textNormal;
 
-  /// `@color/text_subheading`
+  /// @brief `@color/text_subheading`
   final Color textSubheading;
 
-  /// ActionBar 背景：`Theme.JuiceSSH.Material.Actionbar` 的 `background`
+  /// @brief ActionBar 背景：`Theme.JuiceSSH.Material.Actionbar` 的
+  /// `background`
   final Color actionBarBackground;
 
-  /// ActionBar 标题：`Theme.JuiceSSH.Material.Actionbar.Text` 的 `android:textColor`
+  /// @brief ActionBar 标题：`Theme.JuiceSSH.Material.Actionbar.Text` 的
+  /// `android:textColor`
   final Color actionBarTitle;
 
-  /// 暗色下 `@android:color/secondary_text_dark`，亮色下等于 `accent_bold`
+  /// @brief 暗色下 `@android:color/secondary_text_dark`，亮色下等于
+  /// `accent_bold`
   final Color secondaryText;
 
-  /// 亮色：`res/values/colors.xml`
+  /// @brief 亮色：`res/values/colors.xml`
   static const JuicePalette light = JuicePalette(
     isDark: false,
     primaryBold: Color(0xFFFFE24C),
@@ -153,7 +159,7 @@ class JuicePalette {
     secondaryText: Color(0x8A000000),
   );
 
-  /// 暗色：`res/values-night/colors.xml`
+  /// @brief 暗色：`res/values-night/colors.xml`
   static const JuicePalette dark = JuicePalette(
     isDark: true,
     primaryBold: Color(0xFFD8C041),
@@ -185,54 +191,60 @@ class JuicePalette {
   );
 }
 
-/// 原版里与主题无关的固定颜色，散落在 `res/values/colors.xml`。
+/// @brief 原版里与主题无关的固定颜色，散落在 `res/values/colors.xml`。
 abstract final class JuiceFixedColors {
-  /// `@color/titlebar_background`
+  /// @brief `@color/titlebar_background`
   static const Color titlebarBackground = Color(0xC1000000);
 
-  /// `@color/table_row_highlight`
+  /// @brief `@color/table_row_highlight`
   static const Color tableRowHighlight = Color(0x33BCCACF);
 
-  /// `@color/log_viewer_background` / `@color/log_viewer_foreground`
+  /// @brief `@color/log_viewer_background` / `@color/log_viewer_foreground`
   static const Color logViewerBackground = Color(0xFF000000);
   static const Color logViewerForeground = Color(0xFF00FF00);
 
-  /// `@color/copy_instructions_background`
+  /// @brief `@color/copy_instructions_background`
   static const Color copyInstructionsBackground = Color(0xFFF44336);
 
-  /// `@color/copy_instructions_start_selection_background`
+  /// @brief `@color/copy_instructions_start_selection_background`
   static const Color copyInstructionsStartSelection = Color(0xFFF44336);
 
-  /// `@color/copy_instructions_end_selection_background`
+  /// @brief `@color/copy_instructions_end_selection_background`
   static const Color copyInstructionsEndSelection = Color(0xFF4CAF50);
 
-  /// `@color/copy_instructions_text`
+  /// @brief `@color/copy_instructions_text`
   static const Color copyInstructionsText = Color(0xFFFFFFFF);
 
-  /// `@color/pinlock_background`
+  /// @brief `@color/pinlock_background`
   static const Color pinlockBackground = Color(0xFF000000);
 
-  /// `@drawable/loading_screen` —— 终端连接中的径向渐变
+  /// @brief `@drawable/loading_screen` —— 终端连接中的径向渐变
   static const Color loadingScreenStart = Color(0xFF292929);
+  /// @brief 径向渐变的终点色（更深）。
   static const Color loadingScreenEnd = Color(0xFF090909);
 }
 
-/// 原版 `arrays.xml` 里 `dark_theme_values` 的三个取值，注意顺序是 3/1/2。
+/// @brief 原版 `arrays.xml` 里 `dark_theme_values` 的三个取值，注意顺序是
+/// 3/1/2。
 enum AppThemeMode {
-  /// value 3 —— 跟随系统
+  /// @brief value 3 —— 跟随系统
   automatic(3, 'Automatic (system default)'),
 
-  /// value 1
+  /// @brief value 1
   light(1, 'Light'),
 
-  /// value 2
+  /// @brief value 2
   dark(2, 'Dark');
 
+  /// @brief 创建主题模式枚举项。
   const AppThemeMode(this.value, this.label);
 
+  /// @brief 落库取值（3 自动 / 1 亮 / 2 暗）。
   final int value;
+  /// @brief 原版英文显示名。
   final String label;
 
+  /// @brief 由落库取值反解主题模式。
   static AppThemeMode fromValue(String? raw) {
     final parsed = int.tryParse(raw ?? '');
     // `-1` 不在原版 `arrays.xml` 的取值表内（3 = Automatic / 1 = Light / 2 = Dark），
@@ -246,6 +258,7 @@ enum AppThemeMode {
     );
   }
 
+  /// @brief 映射成 Flutter 的 [ThemeMode]。
   ThemeMode get themeMode => switch (this) {
         AppThemeMode.automatic => ThemeMode.system,
         AppThemeMode.light => ThemeMode.light,

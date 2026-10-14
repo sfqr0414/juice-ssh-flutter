@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'terminal_session.dart';
 
-/// 进程级的活动会话宿主。
+/// @brief 进程级的活动会话宿主。
 ///
 /// 原版 JuiceSSH 把 SSH 会话放在前台 Service 里，终端界面只是「附着」到会话上：
 /// 返回键选「保持后台」之后界面销毁而会话继续跑，端口转发也继续工作 ——
@@ -12,22 +12,25 @@ import 'terminal_session.dart';
 /// `dispose()` 掉，「保持后台」是假的。这里把持有权搬到进程级单例：
 /// 页面只负责**附着/脱离**，会话由 [acquire] 建、由 [close] 回收。
 class SessionHost extends ChangeNotifier {
+  /// @brief 私有构造：单例，只能内部创建。
   SessionHost._();
 
+  /// @brief 进程级单例。
   static final SessionHost instance = SessionHost._();
 
+  /// @brief 连接 id → 该连接的活动会话控制器。
   final Map<int, TerminalSessionController> _sessions =
       <int, TerminalSessionController>{};
 
-  /// 当前进程里活着的会话（连接 id → 控制器）。
+  /// @brief 当前进程里活着的会话（连接 id → 控制器）。
   Map<int, TerminalSessionController> get sessions =>
       Map<int, TerminalSessionController>.unmodifiable(_sessions);
 
-  /// 某个连接当前的会话；没有则为 null。
+  /// @brief 某个连接当前的会话；没有则为 null。
   TerminalSessionController? operator [](int? connectionId) =>
       connectionId == null ? null : _sessions[connectionId];
 
-  /// 取某个连接的活动会话；没有就调用 [create] 新建一个。
+  /// @brief 取某个连接的活动会话；没有就调用 [create] 新建一个。
   ///
   /// 返回 `created` 表明这次是不是新建 —— 页面据此决定要不要发起建连
   /// （重新附着到一个已经在跑的会话时不应该再连一次）。
@@ -46,7 +49,7 @@ class SessionHost extends ChangeNotifier {
     return (controller: controller, created: true);
   }
 
-  /// 主动断开并回收某个连接的会话。
+  /// @brief 主动断开并回收某个连接的会话。
   Future<void> close(int connectionId) async {
     final controller = _sessions.remove(connectionId);
     if (controller == null) return;
@@ -56,7 +59,7 @@ class SessionHost extends ChangeNotifier {
     controller.dispose();
   }
 
-  /// 回收全部会话（测试或退出时用）。
+  /// @brief 回收全部会话（测试或退出时用）。
   Future<void> closeAll() async {
     for (final id in List<int>.of(_sessions.keys)) {
       await close(id);

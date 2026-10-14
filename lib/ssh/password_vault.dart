@@ -1,6 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// 连接密码的**加密持久化**（跨重启）。
+/// @brief 连接密码的**加密持久化**（跨重启）。
 ///
 /// 用户第 2 条实测要求："重启也记住，再做一个（加密）持久化"。
 /// 落地实现用 `flutter_secure_storage`：Android 侧由 **Keystore** 支撑，
@@ -16,12 +16,16 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// * 值在用户输入后被写入，但如果服务端**再次**索要密码（说明它是错的），
 ///   调用方会把这条记录删掉 —— 详见 `SshConnector` 里 `#vault` 那段注释。
 class PasswordVault {
+  /// @brief 私有构造：全部能力都是静态方法。
   PasswordVault._();
 
+  /// @brief 加密存储句柄（Android 由 Keystore 支撑）。
   static const FlutterSecureStorage _storage = FlutterSecureStorage();
 
+  /// @brief 拼出该 user@host 的存储键。
   static String _key(String user, String host) => 'juicessh.pw.$user@$host';
 
+  /// @brief 读出已保存的密码；读不到或存储不可用时返回 null。
   static Future<String?> read({
     required String user,
     required String host,
@@ -35,6 +39,7 @@ class PasswordVault {
     }
   }
 
+  /// @brief 写入密码；写失败只影响下次是否还要重问。
   static Future<void> write({
     required String user,
     required String host,
@@ -47,6 +52,7 @@ class PasswordVault {
     }
   }
 
+  /// @brief 删掉该 user@host 的密码记录。
   static Future<void> erase({
     required String user,
     required String host,

@@ -10,7 +10,9 @@ import '../widgets/juice_popup_menu.dart';
 import '../widgets/pager_list.dart';
 import 'identities_screen.dart';
 
-/// 代码片段（Snippet）管理页 —— 对应原版 `activities.ManageSnippetsActivity`。
+/// @brief 代码片段（Snippet）管理页。
+///
+/// 对应原版 `activities.ManageSnippetsActivity`。
 ///
 /// 依据：
 /// * `AndroidManifest.xml`：`ManageSnippetsActivity` 的 `android:label`
@@ -39,24 +41,33 @@ import 'identities_screen.dart';
 /// 列表行复用 [CardListItem]：72dp 行高、16sp 标题、12sp 副标题，
 /// 与原版列表行同一套 `dimen`。
 class SnippetsScreen extends StatefulWidget {
+  /// @brief 创建片段管理页。
   const SnippetsScreen({super.key});
 
+  /// @brief 创建片段管理页对应的 State。
   @override
   State<SnippetsScreen> createState() => _SnippetsScreenState();
 }
 
+/// @brief 片段管理页的状态：列表数据与增删改操作。
 class _SnippetsScreenState extends State<SnippetsScreen> {
+  /// @brief 数据库单例，本页读写片段的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief 当前片段列表，来自 `JuiceDatabase.snippets()`。
   List<Snippet> _snippets = const <Snippet>[];
+
+  /// @brief 是否仍在读库；加载期间显示转圈。
   bool _loading = true;
 
+  /// @brief 首次读库载入片段列表。
   @override
   void initState() {
     super.initState();
     _reload();
   }
 
+  /// @brief 重新读取片段列表。
   Future<void> _reload() async {
     final snippets = await _db.snippets();
     if (!mounted) return;
@@ -68,7 +79,9 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
 
   // ------------------------------------------------------------ 新增 / 编辑 --
 
-  /// 新增片段 —— 对应 `@id/menu_item_new_snippet` / `@string/new_snippet`。
+  /// @brief 新增片段。
+  ///
+  /// 对应 `@id/menu_item_new_snippet` / `@string/new_snippet`。
   Future<void> _create() async {
     final result = await _snippetDialog(title: context.s('new_snippet'));
     if (!mounted || result == null) return;
@@ -85,7 +98,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     await _reload();
   }
 
-  /// 编辑片段 —— 对应上下文菜单的 `edit`（`@string/edit`）。
+  /// @brief 编辑片段 —— 对应上下文菜单的 `edit`（`@string/edit`）。
   Future<void> _edit(Snippet snippet) async {
     final result = await _snippetDialog(
       title: context.s('edit_snippet'),
@@ -107,12 +120,13 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     await _reload();
   }
 
+  /// @brief 用 SnackBar 提示一条信息（原版的 Toast）。
   void _warn(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// `snippet_dialog.xml` 的对话框。
+  /// @brief `snippet_dialog.xml` 的对话框。
   ///
   /// 返回 `(name, content)`；取消返回 null。
   /// 名称对应 `@id/nickname`，内容对应 `@id/snippet_content`。
@@ -122,6 +136,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     String initialContent = '',
   }) {
     final s = context.s;
+    // 两个控制器随对话框一起创建、在 `whenComplete` 里释放。
     final nameController = TextEditingController(text: initialName);
     final contentController = TextEditingController(text: initialContent);
 
@@ -180,7 +195,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
 
   // ------------------------------------------------------------------ 删除 --
 
-  /// 删除片段 —— 对应上下文菜单的 `delete`（`@string/delete`），
+  /// @brief 删除片段 —— 对应上下文菜单的 `delete`（`@string/delete`），
   /// 删除前用 [JuiceDialogs.confirm] 确认。
   Future<void> _delete(Snippet snippet) async {
     final s = context.s;
@@ -198,7 +213,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
 
   // ------------------------------------------------------------ 上下文菜单 --
 
-  /// 长按行 → 上下文菜单，条目与 `snippet_context_menu.xml` 一一对应。
+  /// @brief 长按行 → 上下文菜单，条目与 `snippet_context_menu.xml` 一一对应。
   ///
   /// 第 59 轮实测（原版 Snippets 页长按 `Restart nginx`，触点 313,343）：
   ///
@@ -242,6 +257,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建本页的 AppBar、列表与新建 FAB。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -314,7 +330,8 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
     );
   }
 
-  /// 副标题显示片段内容。
+  /// @brief 副标题显示片段内容。
+  ///
   ///
   /// 这一条是**实测确认**的，不再是推断：把原版解开 Pro 门禁后新建了一条
   /// 「Restart nginx」片段，`uiautomator` 层级里
@@ -323,7 +340,9 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
   /// 两个 `TextView` 都是 `layout_height="20dp"` + `singleLine` + `ellipsize=end`，
   /// 所以正文长了会被截断，不再另外拼文案。
 
-  /// 空状态：标题 `@string/no_snippets`，说明 `@string/you_do_not_have_any_snippets`。
+  /// @brief 空状态。
+  ///
+  /// 标题 `@string/no_snippets`，说明 `@string/you_do_not_have_any_snippets`。
   ///
   /// 度量沿用 `identity_list.xml` 的 `@id/empty`
   /// （`@dimen/text_heading` 36sp + `@color/text_subheading`），
@@ -344,5 +363,7 @@ class _SnippetsScreenState extends State<SnippetsScreen> {
   }
 }
 
-/// 片段行长按菜单的动作 id，取值与 `snippet_context_menu.xml` 的 `android:id` 一致。
+/// @brief 片段行长按菜单的动作 id。
+///
+/// 取值与 `snippet_context_menu.xml` 的 `android:id` 一致。
 enum _SnippetMenuAction { edit, delete }

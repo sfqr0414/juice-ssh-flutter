@@ -4,11 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../app/juice_theme.dart';
 
-/// 动作条溢出 / 长按上下文菜单里的一项。
+/// @brief 动作条溢出 / 长按上下文菜单里的一项。
 class JuicePopupItem<T> {
+  /// @brief 用返回值与显示文案构造一个菜单项。
   const JuicePopupItem({required this.value, required this.label});
 
+  /// @brief 选中后返回给调用方的值。
   final T value;
+  /// @brief 菜单项显示文案。
   final String label;
 }
 
@@ -38,19 +41,20 @@ class JuicePopupItem<T> {
 // 4.19dp，这一条靠调参数是绕不过去的，只能自己画。
 // ---------------------------------------------------------------------------
 
-/// 单项高度。
+/// @brief 单项高度。
 const double juicePopupItemHeight = 48;
 
-/// 宽度下限（见上文第 1 条）。
+/// @brief 宽度下限（见上文第 1 条）。
 const double juicePopupMinWidth = 196;
 
-/// 单项的左右内边距。原版文字左边界 597px 减去底色左边界 555px = 42px = 16dp。
+/// @brief 单项的左右内边距。原版文字左边界 597px 减去底色左边界 555px = 42px =
+/// 16dp。
 const double juicePopupHorizontalPadding = 16;
 
-/// 弹层右边距屏幕右缘 11px。
+/// @brief 弹层右边距屏幕右缘 11px。
 const double _rightInset = 11 / 2.625;
 
-/// 弹出菜单，几何与原版 `MenuPopupWindow` 一致。
+/// @brief 弹出菜单，几何与原版 `MenuPopupWindow` 一致。
 ///
 /// [anchor] 用 overlay 坐标；菜单的顶边与它对齐、右边距按 [anchor] 的右边界算。
 /// 返回被点中项的值；点空白处或返回键返回 null。
@@ -180,7 +184,7 @@ Future<T?> showJuicePopupMenu<T>({
   );
 }
 
-/// 长按上下文菜单的**兜底**锚点。
+/// @brief 长按上下文菜单的**兜底**锚点。
 ///
 /// 原版这类菜单是 Android 的浮动上下文菜单，底色框左上角就落在触点上。
 /// 本复刻从第 58 轮起在各处长按的 `onLongPress` 外层包 `Listener` 记录
@@ -199,17 +203,23 @@ Rect juiceContextMenuAnchor(BuildContext context) {
   );
 }
 
+/// @brief 弹出菜单里的一行：48dp 高、整行可点。
 class _JuicePopupEntry<T> extends StatelessWidget {
+  /// @brief 用菜单项、文字样式与点击回调构造菜单里的一行。
   const _JuicePopupEntry({
     required this.item,
     required this.style,
     required this.onTap,
   });
 
+  /// @brief 本行对应的菜单项。
   final JuicePopupItem<T> item;
+  /// @brief 由弹层统一算好的文字样式。
   final TextStyle style;
+  /// @brief 点击本行的回调。
   final VoidCallback onTap;
 
+  /// @brief 构建 48dp 高的菜单行。
   @override
   Widget build(BuildContext context) {
     return SizedBox(

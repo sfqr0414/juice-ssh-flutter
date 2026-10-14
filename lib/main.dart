@@ -8,7 +8,7 @@ import 'app/i18n.dart';
 import 'app/settings_controller.dart';
 import 'data/juice_database.dart';
 
-/// 应用入口。
+/// @brief 应用入口。
 ///
 /// **首帧不等初始化**。初始化里有一笔固定开销：首次异步平台调用
 /// （`getDatabasesPath()` 或紧随其后的第一个文件系统调用）实测占 500~800ms，
@@ -21,28 +21,37 @@ Future<void> main() async {
   runApp(const JuiceBootstrap());
 }
 
-/// 初始化期间显示的引导壳：加载完成前是纯色屏，完成后是 `JuiceApp`。
+/// @brief 初始化期间显示的引导壳：加载完成前是纯色屏，完成后是 `JuiceApp`。
 class JuiceBootstrap extends StatefulWidget {
+  /// @brief 创建引导壳 widget。
   const JuiceBootstrap({super.key});
 
+  /// @brief 创建引导壳对应的 State。
   @override
   State<JuiceBootstrap> createState() => _JuiceBootstrapState();
 }
 
+/// @brief 引导壳的状态：初始化完成后把四项依赖交给 `JuiceApp`。
 class _JuiceBootstrapState extends State<JuiceBootstrap> {
 
+  /// @brief 已打开的数据库连接。
   JuiceDatabase? _database;
+  /// @brief 已载入的应用设置。
   SettingsController? _settings;
+  /// @brief 已载入的原版资源表（arrays / colors / dimens / manifest）。
   AppResources? _resources;
+  /// @brief 已载入的界面文案。
   JuiceStrings? _strings;
 
+  /// @brief 启动初始化流程，不阻塞首帧。
   @override
   void initState() {
     super.initState();
     unawaited(_initialize());
   }
 
-  /// 与原版的初始化链一致（原版由 `ApplicationClass` 建库）：
+  /// @brief 与原版的初始化链一致（原版由 `ApplicationClass` 建库）：
+  ///
   /// 开库 → 载入 `config` 设置 → 载入打包资源（对应 `res/values/arrays.xml`）
   /// → 载入文案（对应 `strings.xml` 与 `values-zh`）。
   Future<void> _initialize() async {
@@ -66,6 +75,7 @@ class _JuiceBootstrapState extends State<JuiceBootstrap> {
     });
   }
 
+  /// @brief 初始化完成前显示纯色启动屏，完成后渲染 `JuiceApp`。
   @override
   Widget build(BuildContext context) {
     final database = _database;

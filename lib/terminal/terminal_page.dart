@@ -26,7 +26,7 @@ import 'terminal_pickers.dart';
 import 'session_host.dart';
 import 'terminal_session.dart';
 
-/// SSH 终端会话页面。
+/// @brief SSH 终端会话页面。
 ///
 /// 对应原版 `TerminalEmulatorActivity`。还原了：
 /// * 黄色 ActionBar，标题为连接昵称（远端用转义序列设置过标题则优先用它）；
@@ -53,6 +53,7 @@ import 'terminal_session.dart';
 /// 结论：这个溢出按钮目前是**承重**的，不能按原计划删除；要恢复 1:1，先得让长按
 /// 真正可达（例如用裸指针按下计时，在 xterm 之前抢到长按）。
 class TerminalPage extends StatefulWidget {
+  /// @brief 终端页面：建会话、渲染终端与键栏，并处理手势/滚轮与选择复制。
   const TerminalPage({
     super.key,
     required this.connection,
@@ -61,24 +62,30 @@ class TerminalPage extends StatefulWidget {
     this.portForwards = const <PortForward>[],
   });
 
+  /// @brief 要打开的连接配置。
   final Connection connection;
 
-  /// 该连接配置的身份，按尝试顺序。
+  /// @brief 该连接配置的身份，按尝试顺序。
   final List<Identity> identities;
 
-  /// 连接成功后自动执行的片段（来自 `connection.snippetId`）。
+  /// @brief 连接成功后自动执行的片段（来自 `connection.snippetId`）。
   final Snippet? snippet;
 
-  /// 挂在 `portforward.connection` 上的端口转发，会话建立后自动启动。
+  /// @brief 挂在 `portforward.connection` 上的端口转发，会话建立后自动启动。
   final List<PortForward> portForwards;
 
   @override
+  /// @brief 创建终端页的 State（`_TerminalPageState`）。
   State<TerminalPage> createState() => _TerminalPageState();
 }
 
+/// @brief 终端页的 State：持有会话控制器、手势识别与复制/键盘等交互状态。
 class _TerminalPageState extends State<TerminalPage> {
+  /// @brief 当前连接对应的会话控制器（由 `SessionHost` 持有）。
   late final TerminalSessionController _controller;
 
+  /// @brief 终端页自己的状态栏底色，以及离开时要交还的应用配色底色。
+  ///
   /// 终端页自己的状态栏底色（当前终端配色的 ANSI 0），以及离开时要交还的
   /// 应用配色底色。
   ///
@@ -91,7 +98,7 @@ class _TerminalPageState extends State<TerminalPage> {
   Color? _terminalStatusBarColor;
   Color? _appStatusBarColor;
 
-  /// 把状态栏切成当前终端配色的 ANSI 0；颜色没变时不重复过通道。
+  /// @brief 把状态栏切成当前终端配色的 ANSI 0；颜色没变时不重复过通道。
   void _syncStatusBar() {
     if (!mounted) return;
     _appStatusBarColor = Theme.of(context).primaryColor;
@@ -108,15 +115,24 @@ class _TerminalPageState extends State<TerminalPage> {
       lightIcons: target.computeLuminance() > 0.5,
     );
   }
+  /// @brief 终端控件的选区控制器（传给 `TerminalView.controller`）。
   final TerminalController _terminalController = TerminalController();
+
+  /// @brief 终端隐藏输入框的焦点节点（软键盘显隐靠它）。
   final FocusNode _terminalFocus = FocusNode();
 
+  /// @brief `Toggle Keyboard` 键维护的软键盘显隐状态。
+  ///
   /// `Toggle Keyboard` 键维护的软键盘显隐状态（理由见 `_toggleSoftKeyboard`）。
   bool _softKeyboardVisible = false;
 
+  /// @brief 上一次看到的会话状态，用来识别"刚连上"这个瞬间。
+  ///
   /// 上一次看到的会话状态，用来识别"刚连上"这个瞬间（原版连上就自动弹输入法）。
   TerminalSessionState? _lastSessionState;
 
+  /// @brief 终端内层 `Scrollable` 的控制器。
+  ///
   /// 终端内层 `Scrollable` 的控制器（传给 `TerminalView.scrollController`）。
   /// 用来在**视口尺寸变化**后把位置重新贴底：xterm 的 `_stickToBottom` 只用
   /// `correctBy(_maxScrollExtent - _scrollOffset)` 修正，实测会残留几个像素的
@@ -125,10 +141,12 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 才能对齐。
   final ScrollController _terminalScroll = ScrollController();
 
+  /// @brief 用户当前是否贴在底部（没在翻历史）。
+  ///
   /// 用户当前是否贴在底部（没在翻历史）。只有贴底时才在尺寸变化后重新贴底。
   bool _terminalStuckToBottom = true;
 
-  /// 弹窗键盘（原版 `hacker_keyboard.xml` 那两行键位）是否可见。
+  /// @brief 弹窗键盘（原版 `hacker_keyboard.xml` 那两行键位）是否可见。
   ///
   /// 原版语义有内置教程为证：中文「点击终端以显示弹出键盘，该键盘拥有常用的特殊按键
   /// (比如 Ctrl、方向键等)」/ 英文 "Tap the terminal to bring up a popup keyboard
@@ -137,22 +155,22 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 就是用户实测的第 2 条「终端点击没有切换黑客键盘弹出/隐藏状态」。
   bool _popupKeyboardVisible = true;
 
-  /// 本次按压的起始时刻：只有"短按"才算轻点（用户实测第 2 条要求
+  /// @brief 本次按压的起始时刻：只有"短按"才算轻点（用户实测第 2 条要求
   /// 点终端切换弹出键盘，但长按是弹上下文菜单，绝不能同时切换键盘）。
   DateTime? _pressStartedAt;
 
-  /// 上下文菜单是否正开着（用于屏蔽菜单期间那次抬手被当成轻点）。
+  /// @brief 上下文菜单是否正开着（用于屏蔽菜单期间那次抬手被当成轻点）。
   bool _contextMenuOpen = false;
 
 
-  /// 额外键行是否停在功能键页。
+  /// @brief 额外键行是否停在功能键页。
   bool _showingFunctionKeys = false;
 
-  /// 是否处于「选择起点 / 终点」的两段式复制流程。
+  /// @brief 是否处于「选择起点 / 终点」的两段式复制流程。
   bool _selectingStart = false;
   bool _selectingEnd = false;
 
-  /// 两段式选择时自己维护的选区锚点。
+  /// @brief 两段式选择时自己维护的选区锚点。
   ///
   /// 本来指望 `TerminalView` 自己的长按拖动扩选，但 xterm 4.0.0 的
   /// `TerminalView` **没有任何触摸选区手势**（`_onTapDown` 只清选区/弹键盘），
@@ -160,12 +178,12 @@ class _TerminalPageState extends State<TerminalPage> {
   /// `TerminalController.setSelection()`。
   CellOffset? _copyAnchor;
 
-  /// 终端控件最近一次布局的逻辑尺寸，用于像素 → 单元格换算。
+  /// @brief 终端控件最近一次布局的逻辑尺寸，用于像素 → 单元格换算。
   Size? _terminalLayoutSize;
 
 
 
-  /// 首次进终端时叠在最前面的教程层。
+  /// @brief 首次进终端时叠在最前面的教程层。
   ///
   /// 原版 `TerminalEmulatorActivity.j(Bundle)` 里读 `tutorial:terminal`：值存在且
   /// `parseBoolean` 为 false 时把 `tutorial_terminal.xml` 这一层挂到根布局最前；
@@ -174,6 +192,7 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 所以**首次打开终端一定会看到教程**，点过之后不再出现。
   bool _showTutorial = false;
 
+  /// @brief 附着或新建会话，绑定交互回调并挂上各监听器。
   @override
   void initState() {
     super.initState();
@@ -243,6 +262,8 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// @brief 点教程底部按钮 "OK - I've got it!"。
+  ///
   /// 点教程底部按钮 "OK - I've got it!"：先写 `tutorial:terminal = true`，
   /// 再移除这一层，顺序与原版 `TerminalEmulatorActivity$k.onClick` 一致。
   Future<void> _dismissTutorial() async {
@@ -251,6 +272,7 @@ class _TerminalPageState extends State<TerminalPage> {
     setState(() => _showTutorial = false);
   }
 
+  /// @brief 建连，成功后给连接使用次数 +1 并执行传入的片段。
   Future<void> _start() async {
     await _controller.connect();
     if (!mounted) return;
@@ -272,6 +294,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// @brief 会话变化：同步状态栏，首次连上时弹出软键盘并补一次贴底重绘。
   void _onSessionChanged() {
     // 会话中也能改终端配色（长按菜单），状态栏要跟着走。
     _syncStatusBar();
@@ -295,6 +318,7 @@ class _TerminalPageState extends State<TerminalPage> {
     if (mounted) setState(() {});
   }
 
+  /// @brief 页面销毁：解除交互回调与按键拦截，只脱离而不销毁会话。
   @override
   void dispose() {
     WakelockPlus.disable();
@@ -320,10 +344,10 @@ class _TerminalPageState extends State<TerminalPage> {
 
   // ---------------------------------------------------------- 复制 --
 
-  /// "Copy (whole session)" —— 整段回滚缓冲（10000 行）。
+  /// @brief "Copy (whole session)" —— 整段回滚缓冲（10000 行）。
   String get _wholeSession => _controller.bufferText;
 
-  /// "Copy (from screen)" —— 有选区就复制选区，否则复制当前可见区。
+  /// @brief "Copy (from screen)" —— 有选区就复制选区，否则复制当前可见区。
   String get _fromScreen {
     final selection = _terminalController.selection;
     final buffer = _controller.terminal.buffer;
@@ -341,6 +365,7 @@ class _TerminalPageState extends State<TerminalPage> {
     return buffer.getText(range);
   }
 
+  /// @brief 把文本写入系统剪贴板，并弹 `text_copied_to_clipboard` 提示。
   Future<void> _copyToClipboard(String text) async {
     if (text.trim().isEmpty) return;
     await Clipboard.setData(ClipboardData(text: text));
@@ -351,6 +376,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
+  /// @brief 把剪贴板文本粘进会话。
   Future<void> _paste() async {
     final data = await Clipboard.getData(Clipboard.kTextPlain);
     final text = data?.text;
@@ -358,6 +384,8 @@ class _TerminalPageState extends State<TerminalPage> {
     _controller.paste(text);
   }
 
+  /// @brief 终端内边距（逻辑像素）。
+  ///
   /// 终端内边距（逻辑像素）：选择态用 `terminal:margin_selection`（原版行为）。
   double get _terminalMargin {
     final settings = SettingsController.instance;
@@ -368,7 +396,7 @@ class _TerminalPageState extends State<TerminalPage> {
     return value.toDouble();
   }
 
-  /// 把终端控件内的本地像素坐标换算成终端单元格。
+  /// @brief 把终端控件内的本地像素坐标换算成终端单元格。
   ///
   /// 口径与 xterm 一致：可视高度 = 控件高度 - 上下 padding，
   /// 行高 = 可视高度 / `viewHeight`；贴底显示时可视区第一行是
@@ -395,7 +423,7 @@ class _TerminalPageState extends State<TerminalPage> {
     return CellOffset(column, row);
   }
 
-  /// 按当前锚点 + 手指所在单元格刷新选区。
+  /// @brief 按当前锚点 + 手指所在单元格刷新选区。
   ///
   /// 颜色由主题的 `selection` 决定，已经改成原版的红色（`#FFF44336`）。
   void _applyCopySelection(CellOffset? cell) {
@@ -409,7 +437,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  /// "Copy (from screen)" 的两段式选择流程。
+  /// @brief "Copy (from screen)" 的两段式选择流程。
   ///
   /// 原版先进入选择模式并提示「拖到选区起点」，再提示「拖到选区终点」，
   /// 期间终端边距会放宽到 `terminal:margin_selection` 以便选到边缘字符。
@@ -422,6 +450,7 @@ class _TerminalPageState extends State<TerminalPage> {
     _terminalController.clearSelection();
   }
 
+  /// @brief 推进两段式选择：起点 → 终点 → 复制并收起选区。
   void _advanceScreenCopy() {
     if (_selectingStart) {
       setState(() {
@@ -444,6 +473,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// @brief 取消两段式选择：清掉选择标志、锚点与选区高亮。
   void _cancelScreenCopy() {
     setState(() {
       _selectingStart = false;
@@ -455,6 +485,7 @@ class _TerminalPageState extends State<TerminalPage> {
 
   // ---------------------------------------------------------- 键盘 --
 
+  /// @brief 切换软键盘显隐：真实状态从原生侧查，查不到才退回记账值。
   Future<void> _toggleSoftKeyboard() async {
     // 真实状态**从原生侧查**（`WindowInsets.isVisible(ime())`）。
     //
@@ -477,7 +508,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
-  /// 布局结束后量真实几何 + 缓冲内容（`JuiceSshGeom3`）。
+  /// @brief 布局结束后量真实几何 + 缓冲内容（`JuiceSshGeom3`）。
   ///
   /// 构建期的 `JuiceSshGeom` 读到的行列数是**旧值**（xterm 在布局里才 resize），
   /// 所以旋转问题必须看这一行。`text` 是整块缓冲的开头（`/` 代表换行）：
@@ -491,7 +522,7 @@ class _TerminalPageState extends State<TerminalPage> {
     if (head.length > 44) head = head.substring(0, 44);
   }
 
-  /// 裁掉缓冲区**末尾的空行**，让长度回到正好一屏；返回裁掉的行数。
+  /// @brief 裁掉缓冲区**末尾的空行**，让长度回到正好一屏；返回裁掉的行数。
   ///
   /// xterm 的 `Buffer.resize`（`lib/src/core/buffer/buffer.dart:437-477`）在宽度变化
   /// 触发 `reflow` 之后只做 `while (reflowResult.length < newHeight) add 空行`，
@@ -535,7 +566,7 @@ class _TerminalPageState extends State<TerminalPage> {
     return removable;
   }
 
-  /// 视口尺寸变化后把滚动位置重新贴底（丢掉 xterm 残留的分数偏移）。
+  /// @brief 视口尺寸变化后把滚动位置重新贴底（丢掉 xterm 残留的分数偏移）。
   ///
   /// 只在用户本来就贴在底部时做：正在翻历史的人不该被拽回来。旋转屏幕、
   /// 软键盘起落、键位条切换都会走到这里 —— 用户报的"终端屏幕旋转内容显示不正常"
@@ -561,7 +592,11 @@ class _TerminalPageState extends State<TerminalPage> {
     _terminalStuckToBottom = true;
   }
 
+  /// @brief 把输入法顶出来。
+  ///
   /// 把输入法顶出来（`_toggleSoftKeyboard` 的显示分支；连上终端时也用它）。
+  ///
+  /// 焦点 attach 存在时序差，所以中间穿插几次延迟与 focus 重试。
   Future<void> _showSoftKeyboard() async {    _softKeyboardVisible = true;
     _terminalFocus.requestFocus();
     // 等一小段时间让焦点真正落到输入框上再要求显示：紧接着 requestFocus()
@@ -586,6 +621,7 @@ class _TerminalPageState extends State<TerminalPage> {
     await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   }
 
+  /// @brief 处理快捷键盘按键：功能键页开关、软键盘开关、其余交给会话发键。
   void _onKeyTag(int tag) {
     switch (tag) {
       case KeyTag.fn:
@@ -602,6 +638,8 @@ class _TerminalPageState extends State<TerminalPage> {
 
   // ---------------------------------------------------------- 菜单 --
 
+  /// @brief 原版 `onCreateContextMenu` 的浮层上下文菜单。
+  ///
   /// 原版 `onCreateContextMenu`（`TerminalEmulatorActivity.smali:2108`）的浮层
   /// 上下文菜单，条目逐项对应（数字是它在 `ContextMenu;->add(..)` 里的 id）：
   ///
@@ -664,6 +702,8 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
+  /// @brief 长按终端弹出的上下文菜单，条目与原版逐项一致。
+  ///
   /// 长按终端弹出的上下文菜单，条目与原版逐项一致（见 `_showContextMenu`）。
   ///
   /// 第 31 轮把这 8 项补齐之后，ActionBar 上那个当初作为可达性兜底的溢出按钮
@@ -700,6 +740,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// @brief 弹出配色选择器并保存终端配色。
   Future<void> _pickTheme() async {
     final settings = SettingsController.instance;
     final index = await TerminalPickers.pickTheme(
@@ -711,7 +752,7 @@ class _TerminalPageState extends State<TerminalPage> {
     if (mounted) setState(() {});
   }
 
-  /// 切换额外键行的位置。对应原版设置项 `popup_keyboard_position`。
+  /// @brief 切换额外键行的位置。对应原版设置项 `popup_keyboard_position`。
   Future<void> _pickKeyboardPosition() async {
     final s = context.s;
     final settings = SettingsController.instance;
@@ -753,7 +794,7 @@ class _TerminalPageState extends State<TerminalPage> {
     if (mounted) setState(() {});
   }
 
-  /// 在会话里运行片段。对应原版上下文菜单里的 Snippets 子菜单。
+  /// @brief 在会话里运行片段。对应原版上下文菜单里的 Snippets 子菜单。
   Future<void> _pickSnippet() async {
     final s = context.s;
     final snippets = await JuiceDatabase.instance.snippets();
@@ -788,7 +829,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  /// 保存会话记录。文件名格式与原版一致：`<昵称>_yyyyMMddHHmmss.txt`。
+  /// @brief 保存会话记录。文件名格式与原版一致：`<昵称>_yyyyMMddHHmmss.txt`。
   Future<void> _saveTranscript() async {
     final s = context.s;
     final text = _wholeSession;
@@ -811,6 +852,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
+  /// @brief 用系统分享面板把整段会话记录发出去。
   Future<void> _shareTranscript() async {
     final s = context.s;
     final text = _wholeSession;
@@ -823,7 +865,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  /// 保持屏幕常亮。原版会先弹 `screen_on_warning` 警告。
+  /// @brief 保持屏幕常亮。原版会先弹 `screen_on_warning` 警告。
   Future<void> _keepScreenOn() async {
     final s = context.s;
     final confirmed = await JuiceDialogs.confirm(
@@ -836,7 +878,7 @@ class _TerminalPageState extends State<TerminalPage> {
     await WakelockPlus.enable();
   }
 
-  /// 返回键：原版弹 `background_session` 三选提示。
+  /// @brief 返回键：原版弹 `background_session` 三选提示。
   ///
   /// 是 —— 保持会话在后台运行，只关闭界面；
   /// 否 —— 断开连接；
@@ -880,6 +922,7 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 
   // ---------------------------------------------------------- 构建 --
+  /// @brief 构建终端页：透明 AppBar + 终端主体 + 键位条 + 选择提示条 + 教程层。
   @override
   Widget build(BuildContext context) {
     final settings = SettingsController.instance;
@@ -987,7 +1030,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
-  /// 两段式选择提示条。起点用红色、终点用绿色，均取原版颜色资源。
+  /// @brief 两段式选择提示条。起点用红色、终点用绿色，均取原版颜色资源。
   Widget _buildSelectionBanner() {
     final s = context.s;
     return GestureDetector(
@@ -1025,6 +1068,7 @@ class _TerminalPageState extends State<TerminalPage> {
     );
   }
 
+  /// @brief 构建 70dp 额外键行（`HackerKeyboard`），底色取终端配色。
   Widget _buildKeyRow() {
     return ColoredBox(
       color: _controller.keyBarBackground,
@@ -1042,15 +1086,21 @@ class _TerminalPageState extends State<TerminalPage> {
 
   // --- 长按菜单：绕开手势竞技场，用裸指针按下计时 ---
 
+  /// @brief 长按判定超时。
+  ///
   /// 原版长按用系统默认超时（`ViewConfiguration.getLongPressTimeout()`），
   /// 这台设备上是 500ms，这里对齐；移动超过 18px 视为滑动，取消。
   static const Duration _longPressTimeout = Duration(milliseconds: 500);
+  /// @brief 长按判定的位移阈值（逻辑像素）：超过即视为滑动，取消长按。
   static const double _longPressSlop = 18;
 
-  /// 自增令牌代替 `Timer`，这样不必额外引入 `dart:async`。
+  /// @brief 自增令牌代替 `Timer`，这样不必额外引入 `dart:async`。
   int _longPressToken = 0;
+  /// @brief 长按判定的起点坐标，抬手时用它区分轻点与拖动。
   Offset? _longPressOrigin;
 
+  /// @brief 原版 5.2 `terminal:horizontal_swipe_mode` 的输入序列
+  ///
   /// 原版 5.2 `terminal:horizontal_swipe_mode` 的五种取值对应的输入序列
   /// （`docs/terminal-behaviour-spec.md` 5.2）。下标即设置值，每项是
   /// （手指向左 = `dx < 0` 走 `c(0)`，手指向右 = `dx > 0` 走 `c(1)`）。
@@ -1067,13 +1117,21 @@ class _TerminalPageState extends State<TerminalPage> {
     ('', ''),
   ];
 
+  /// @brief fling 门槛。
+  ///
   /// fling 门槛：原版「非 fling 或过慢的位移不会触发 `c()`」，这里用位移 + 速度近似。
   static const double _swipeMinDistance = 60;
+
+  /// @brief 触发水平 fling 所需的最小速度（逻辑像素 / 秒）。
   static const double _swipeMinVelocity = 200;
 
+  /// @brief 本次水平滑动的起点坐标（抬起时算位移）。
   Offset? _swipeStart;
+
+  /// @brief 本次水平滑动的起始时间戳（抬起时算速度）。
   Duration? _swipeStartAt;
 
+  /// @brief 指针按下：记录长按/滑动起点，并排队 500ms 后的长按菜单回调。
   void _onTerminalPointerDown(PointerDownEvent event) {
     _longPressOrigin = event.position;
     _swipeStart = event.position;
@@ -1102,11 +1160,12 @@ class _TerminalPageState extends State<TerminalPage> {
     });
   }
 
-  /// 滚轮事件的像素余数，对应原版的 `mScrollRemainder`。
+  /// @brief 滚轮事件的像素余数，对应原版的 `mScrollRemainder`。
   ///
   /// 原版按单元格高度累积：不足一行高度的位移留到下一次，避免"每动一点就发一个滚轮"。
   double _wheelRemainder = 0;
 
+  /// @brief 指针移动：取消超阈长按、扩展选区，并把竖向滑动转发成滚轮事件。
   void _onTerminalPointerMove(PointerMoveEvent event) {
     final origin = _longPressOrigin;
     // 这里**不能**提前 `return`：下方的"主屏拖动滚动"必须在每次指针移动时执行。
@@ -1200,6 +1259,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }());
   }
 
+  /// @brief 指针抬起：选择中点按推进，否则轻点切键位条 / 判水平滑动。
   void _onTerminalPointerUp(PointerUpEvent event) {
     final origin = _longPressOrigin;
     final elapsed = _pressElapsed;
@@ -1232,6 +1292,8 @@ class _TerminalPageState extends State<TerminalPage> {
     _handleHorizontalSwipe(event);
   }
 
+  /// @brief 抬手时判定水平 fling，并发对应模式的按键序列。
+  ///
   /// 原版 `TerminalGestureListener.onFling`：`dx < 0`（手指向左）走 `c(0)`，
   /// `dx > 0`（手指向右）走 `c(1)`；模式 4（Disabled）的 `c()` 立即返回，
   /// 所以这里对应空序列。
@@ -1256,23 +1318,26 @@ class _TerminalPageState extends State<TerminalPage> {
     _controller.sendText(sequence);
   }
 
+  /// @brief 指针被系统取消（如被别的手势抢走）：作废长按并清掉按压计时。
   void _onTerminalPointerCancel(PointerCancelEvent event) {
     _cancelLongPress();
     _pressStartedAt = null;
   }
 
-  /// 本次按压已持续多久（没有按压时为零）。
+  /// @brief 本次按压已持续多久（没有按压时为零）。
   Duration get _pressElapsed {
     final started = _pressStartedAt;
     if (started == null) return Duration.zero;
     return DateTime.now().difference(started);
   }
 
+  /// @brief 作废已排队的长按回调并清掉长按起点。
   void _cancelLongPress() {
     _longPressToken++;
     _longPressOrigin = null;
   }
 
+  /// @brief 按会话状态切换正文：连接中 / 连接失败 / 已连接或已关闭。
   Widget _buildBody() {
     switch (_controller.state) {
       case TerminalSessionState.connecting:
@@ -1303,6 +1368,7 @@ class _TerminalPageState extends State<TerminalPage> {
     }
   }
 
+  /// @brief 构建终端主体（xterm `TerminalView` 子树）。
   Widget _buildTerminal() {
     final settings = SettingsController.instance;
     // 选择过程中把边距放宽到 `terminal:margin_selection`，便于选到边缘字符。
@@ -1443,15 +1509,18 @@ class _TerminalPageState extends State<TerminalPage> {
   }
 }
 
-/// 连接中的全屏提示。
+/// @brief 连接中的全屏提示。
 ///
 /// 背景是 `@drawable/loading_screen` 的径向渐变：中心 `#ff292929`、
 /// 边缘 `#ff090909`，半径 600。文案用 `connecting`（Connecting…）。
 class _ConnectingView extends StatelessWidget {
+  /// @brief 「正在连接」占位视图（半透明黑底 + `Connecting…` 文案）。
   const _ConnectingView({required this.message});
 
+  /// @brief 正在显示给用户的进度文案（如 "Connecting…"）。
   final String message;
 
+  /// @brief 构建径向渐变背景 + 转圈 + 进度文案。
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1490,14 +1559,21 @@ class _ConnectingView extends StatelessWidget {
   }
 }
 
+/// @brief 连接失败提示。
+///
 /// 连接失败提示。文案用原版的 `connection_failed` / `unabled_to_connect_to_host`
 /// （注意原版这个键名本身就少了个 e）与 `reconnect`。
 class _FailureView extends StatelessWidget {
+  /// @brief 连接失败视图：展示失败详情与「Reconnect」按钮。
   const _FailureView({required this.failure, required this.onRetry});
 
+  /// @brief 失败详情（为空表示只有一类失败，取默认文案）。
   final SshFailure? failure;
+
+  /// @brief 点「Reconnect」时的回调。
   final VoidCallback onRetry;
 
+  /// @brief 构建失败图标 + 失败原因 + Reconnect 按钮。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -1534,8 +1610,7 @@ class _FailureView extends StatelessWidget {
   }
 }
 
-/// 远端 shell 已退出时贴在底部的提示条。
-/// `res/layout/tutorial_terminal.xml` —— 首次进终端的教程层。
+/// @brief `res/layout/tutorial_terminal.xml` —— 首次进终端的教程层。
 ///
 /// 整层黑底 + `android:alpha="0.7"`，盖满全屏（`fitsSystemWindows="true"`，所以
 /// 这里套一层 `SafeArea`）；内部是可滚动的文字列，底部固定一个按钮。
@@ -1549,17 +1624,29 @@ class _FailureView extends StatelessWidget {
 /// 布局里 ScrollView 的 `layout_marginBottom=50dp`，正是给底部按钮
 /// （30dp 高 + 上下各 10dp 外距）留出的位置。
 class _TerminalTutorial extends StatelessWidget {
+  /// @brief 首次进入终端的教程覆盖层（半透明遮罩 + 说明 + 按钮）。
   const _TerminalTutorial({required this.onDismiss});
 
+  /// @brief 点教程层底部按钮（"OK - I've got it!"）时的回调。
   final VoidCallback onDismiss;
 
+  /// @brief 标题行字号（`@string/tutorial`，18sp）。
   static const double _titleSize = 18;
+
+  /// @brief 分组行字号（`@string/font_size`，14sp）。
   static const double _groupSize = 14;
+
+  /// @brief 说明行字号（12sp）。
   static const double _bodySize = 12;
+
+  /// @brief 说明行的外距（左右 20dp、下 5dp）。
   static const EdgeInsets _bodyMargin =
       EdgeInsets.only(left: 20, right: 20, bottom: 5);
+
+  /// @brief 分组行的外距（左 10dp、下 5dp），形成两级缩进。
   static const EdgeInsets _groupMargin = EdgeInsets.only(left: 10, bottom: 5);
 
+  /// @brief 构建半透明黑底 + 可滚动说明文字 + 底部确认按钮。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -1598,6 +1685,7 @@ class _TerminalTutorial extends StatelessWidget {
     );
   }
 
+  /// @brief 按原版规格渲染一行教程文字（字号 + 外距）。
   Widget _line(String text, double size, EdgeInsets margin) {
     return Padding(
       padding: margin,
@@ -1613,17 +1701,22 @@ class _TerminalTutorial extends StatelessWidget {
   }
 }
 
-/// `@drawable/button_transparent` + 布局里那个 30dp 高的 Button。
+/// @brief `@drawable/button_transparent` + 布局里那个 30dp 高的 Button。
 ///
 /// 描边在布局里写的是 `3.0px`（**物理**像素，不是 dp），所以这里按设备像素比
 /// 换算，保证任何密度下都是 3 个物理像素；按下时描边由 `#ffffffff` 变
 /// `#33ffffff`（alpha 0.2），也就是按钮的 `state_pressed` 分支。
 class _TutorialButton extends StatelessWidget {
+  /// @brief 教程覆盖层底部的按钮（按下态 `#33ffffff`）。
   const _TutorialButton({required this.label, required this.onPressed});
 
+  /// @brief 按钮文字（`@string/ok_i_got_it`）。
   final String label;
+
+  /// @brief 点击回调（写回 `tutorial:terminal` 并移除教程层）。
   final VoidCallback onPressed;
 
+  /// @brief 构建 30dp 高、白色描边（3 物理像素）的透明按钮。
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.devicePixelRatioOf(context);
@@ -1656,11 +1749,15 @@ class _TutorialButton extends StatelessWidget {
   }
 }
 
+/// @brief 远端 shell 已退出时贴在底部的提示条。
 class _DisconnectedBanner extends StatelessWidget {
+  /// @brief 远端 shell 已退出时贴在底部的提示条。
   const _DisconnectedBanner({required this.onReconnect});
 
+  /// @brief 点「Reconnect」时的回调。
   final VoidCallback onReconnect;
 
+  /// @brief 构建贴底提示条：左侧断连文案，右侧 Reconnect 按钮。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

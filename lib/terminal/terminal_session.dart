@@ -14,32 +14,37 @@ import 'escape_characters.dart';
 import 'terminal_fonts.dart';
 import 'terminal_themes.dart';
 
-/// 会话所处的阶段。对应原版 `connecting.xml` 展示连接进度、
+/// @brief 会话所处的阶段。
+///
+/// 对应原版 `connecting.xml` 展示连接进度、
 /// 以及连接成功后切换到终端视图的过程。
 enum TerminalSessionState {
-  /// 正在建连 / 认证
+  /// @brief 正在建连 / 认证
   connecting,
 
-  /// 终端可用
+  /// @brief 终端可用
   connected,
 
-  /// 远端 shell 正常退出
+  /// @brief 远端 shell 正常退出
   closed,
 
-  /// 连接失败
+  /// @brief 连接失败
   failed,
 }
 
-/// 单个终端会话。
+/// @brief 单个终端会话。
 ///
 /// 负责三件事：
 /// 1. **状态机** —— 连接中 / 已连接 / 已断开 / 失败；
 /// 2. **字节泵** —— 远端输出喂给 [Terminal]，终端产生的输入写回远端；
 /// 3. **修饰键语义** —— 还原原版 Ctrl / Alt 的行为。
 class TerminalSessionController extends ChangeNotifier {
-  /// 交互式程序（htop/vim 等）是否正在跑。判定完全来自**入站数据**里的私有模式：
-  /// `ESC[?1049h` = 切备用屏；`ESC[?1000h/1002h/1003h` = 打开鼠标上报
-  /// （htop 默认就开鼠标）；`ESC[?47h` 是老式备用屏写法。对应的 `...l` 复位。
+  /// @brief 交互式程序（htop/vim 等）是否正在跑。
+  ///
+  /// 判定完全来自**入站数据**里的私有模式，且**只认备用屏**：
+  /// `ESC[?1049h` = 切备用屏（`ESC[?47h` 是它的旧写法），对应的 `...l` 复位。
+  /// 鼠标上报模式 `1000h/1002h/1003h` **不算** —— 普通 shell 自己就会开，
+  /// 详见下方 `_interactiveOn` 的说明（第 38 轮回归）。
   ///
   /// 用途（第 274/275 轮）：用户实测"进 htop 不能滑（很好），但旋转到横屏又能滑了，
   /// 转回竖屏还能滑"。根因是旋转让**视口变矮**，主屏回滚缓冲立刻出现滚动余量
@@ -47,7 +52,9 @@ class TerminalSessionController extends ChangeNotifier {
   /// 所以只能在这里识别"有交互式程序在跑"，再由页面禁掉手指拖动滚动。
   final ValueNotifier<bool> interactiveProgram = ValueNotifier<bool>(false);
 
-  /// 每次终端输出都自增：让终端那层的 `ScrollConfiguration`（拖动设备集合）能在
+  /// @brief 每次终端输出都自增。
+  ///
+  /// 让终端那层的 `ScrollConfiguration`（拖动设备集合）能在
   /// **备用屏进出时立刻重算**，而不是等下一次无关的重建。
   ///
   /// 没有它会出这个错：进入 htop/vim 后没有新的重建，页面仍保留"允许拖动"的旧配置，
@@ -55,7 +62,7 @@ class TerminalSessionController extends ChangeNotifier {
   /// 备用屏切换序列本身就会产生一次输出，htop 之类持续重绘更是每帧都会命中。
   final ValueNotifier<int> outputTick = ValueNotifier<int>(0);
 
-  /// 入站数据的**滚动尾巴**（最近 24 个字符）。
+  /// @brief 入站数据的**滚动尾巴**（最近 24 个字符）。
   ///
   /// 必须要有它：实测（第 281 轮）交互式私有模式会被**分块**送达 —— 现场注入
   /// `ESC[?1000h` 时，服务端回显把 `\x1b`、`[`、`?`、`1`、`0`、`0`、`0`、`h`
@@ -64,7 +71,7 @@ class TerminalSessionController extends ChangeNotifier {
   /// 拼接"尾巴 + 本块"再扫描，就能跨块命中；尾巴只保留 24 字符，不会误伤。
   String _interactiveTail = '';
 
-  /// 只有**备用屏**才算"有交互式全屏程序在跑"。
+  /// @brief 只有**备用屏**才算"有交互式全屏程序在跑"。
   ///
   /// 锐边（第 38 轮，用户报的回归）：早先这里把鼠标上报模式
   /// `1000/1002/1003` 也算了进来，但**普通 shell 自己就会开这些模式**
@@ -72,9 +79,12 @@ class TerminalSessionController extends ChangeNotifier {
   /// 手指滑动彻底失效 —— 表现就是"普通模式下不能滑屏滚动"。
   /// 备用屏 `1049`（htop/vim/less 用它）才是可靠的全屏信号；`47` 是它的旧写法。
   static final RegExp _interactiveOn = RegExp(r'\x1b\[\?(?:1049|47)h');
+  /// @brief 备用屏**退出**序列的匹配式，与 `_interactiveOn` 成对使用。
   static final RegExp _interactiveOff = RegExp(r'\x1b\[\?(?:1049|47)l');
 
-  /// 入站数据的唯一入口：先把"滚动尾巴 + 本块"拼起来扫私有模式，再交给终端渲染。
+  /// @brief 入站数据的唯一入口。
+  ///
+  /// 先把"滚动尾巴 + 本块"拼起来扫私有模式，再交给终端渲染。
   void _writeToTerminal(String data) {
     final window = _interactiveTail + data;
     if (window.contains('\x1b[?')) {
@@ -99,6 +109,9 @@ class TerminalSessionController extends ChangeNotifier {
     outputTick.value++;
   }
 
+  /// @brief 构造会话控制器；连接所需的数据与交互回调全部由参数注入。
+  ///
+  /// 创建时不会自动连接，要由调用方显式调用 [connect]。
   TerminalSessionController({
     required this.connection,
     required this.identities,
@@ -110,41 +123,54 @@ class TerminalSessionController extends ChangeNotifier {
     this.onBell,
   });
 
+  /// @brief 本会话对应的连接配置（地址、端口、昵称等）。
   final Connection connection;
+  /// @brief 认证可用的私钥/身份列表。
   final List<Identity> identities;
+  /// @brief 主机密钥仓库，用于连接时的已知主机校验。
   final HostKeyStore hostKeyStore;
+  /// @brief 应用设置，字号、终端类型、响铃模式等都从这里读。
   final SettingsController settings;
+  /// @brief 主机密钥质询回调。
+  ///
   /// 交互式回调归「当前附着在会话上的终端页」所有。
   ///
   /// 会话可能在没有界面的时候继续跑（原版靠前台 Service，本项目靠
   /// `SessionHost`），此时没有页面可以弹窗，两个回调为 null：
   /// 主机密钥校验按拒绝处理，密码提示返回 null。
   HostKeyConfirm? onHostKeyChallenge;
+  /// @brief 密码/口令提示回调；没有界面附着时为 null，此时返回 null。
   CredentialPrompt? onPasswordPrompt;
 
-  /// 端口转发通知上「停止」动作的文案（原版 `@string/disconnect`）。
+  /// @brief 端口转发通知上「停止」动作的文案（原版 `@string/disconnect`）。
+  ///
   /// 本地化要 `BuildContext`，所以由界面层注入，默认英文。
   String disconnectLabel = 'Disconnect';
 
-  /// 挂在 [connection] 上的端口转发。会话建立后自动启动，断开时回收 ——
+  /// @brief 挂在 [connection] 上的端口转发。
+  ///
+  /// 会话建立后自动启动，断开时回收 ——
   /// 对应原版把转发绑在连接上（`portforward.connection`）的行为。
   final List<PortForward> portForwards;
 
-  /// 终端响铃回调（原版按 `terminal:bell_mode` 决定震动 / 通知 / 忽略）。
+  /// @brief 终端响铃回调。
+  ///
+  /// 原版按 `terminal:bell_mode` 决定震动 / 通知 / 忽略。
   void Function()? onBell;
 
-  /// 回滚缓冲行数。
+  /// @brief 回滚缓冲行数。
   ///
   /// 依据：原版 `TermSession` 的 `TRANSCRIPT_ROWS = 0x2710`，即 **10000 行**。
   static const int scrollbackLines = 10000;
 
-  /// `terminal:font_size` 到 Flutter 逻辑字号的换算系数。
+  /// @brief `terminal:font_size` 到 Flutter 逻辑字号的换算系数。
   ///
   /// 原版把该设置直接当作 emulator 的像素字号使用，取值范围 1..30、默认 8；
   /// 直接套用会让默认值小到看不清。这里按 **1.75** 换算（默认 8 → 14 逻辑像素），
   /// 属于**标定值**，待与真机截图比对后再微调。
   static const double fontSizeScale = 1.75;
 
+  /// @brief 底层 xterm 终端实例，承载回滚缓冲与转义序列解析。
   late final Terminal terminal = Terminal(
     maxLines: scrollbackLines,
     platform: TerminalTargetPlatform.android,
@@ -154,61 +180,85 @@ class TerminalSessionController extends ChangeNotifier {
     onTitleChange: _handleTitleChange,
   );
 
+  /// @brief 底层 SSH 会话，未连接或已断开时为 null。
   JuiceSshSession? _session;
+  /// @brief 远端输出流的订阅，断开时取消。
   StreamSubscription<String>? _outputSubscription;
 
-  /// 本次会话的端口转发运行时，会话建立后创建、断开时回收。
+  /// @brief 本次会话的端口转发运行时，会话建立后创建、断开时回收。
   PortForwardService? _forwardService;
 
+  /// @brief 当前会话状态，初始为 [TerminalSessionState.connecting]。
   TerminalSessionState _state = TerminalSessionState.connecting;
+  /// @brief 连接进度文案，显示在连接页上。
   String _progress = '正在连接';
+  /// @brief 连接失败的原因，失败时非 null。
   SshFailure? _failure;
+  /// @brief 远端通过转义序列设置的窗口标题，可能为 null。
   String? _terminalTitle;
+  /// @brief 当前终端列数，随 [Terminal] 的 resize 回调更新。
   int _columns = 80;
 
-  /// 初始行数。原版 `initializeEmulator(80, 25)`，所以是 25 行而不是常见的 24。
+  /// @brief 初始行数。
+  ///
+  /// 原版 `initializeEmulator(80, 25)`，所以是 25 行而不是常见的 24。
   int _rows = 25;
 
-  /// Ctrl 待生效标志。原版按下 Ctrl 后按钮保持高亮，作用于**下一个字符**。
+  /// @brief Ctrl 待生效标志。
+  ///
+  /// 原版按下 Ctrl 后按钮保持高亮，作用于**下一个字符**。
   bool _ctrlArmed = false;
 
-  /// Alt 待生效标志。原版按下 Alt 会**立刻发送一个 ESC**，并保持高亮。
+  /// @brief Alt 待生效标志。原版按下 Alt 会**立刻发送一个 ESC**，并保持高亮。
   bool _altArmed = false;
 
-  /// 用户按音量键临时调整的字号；为 null 时用设置里的值。
+  /// @brief 用户按音量键临时调整的字号；为 null 时用设置里的值。
   int? _fontSizeOverride;
 
+  /// @brief 当前会话状态。
+  ///
+  /// 页面用 [ChangeNotifier] 的通知机制监听它的变化。
   TerminalSessionState get state => _state;
+  /// @brief 连接进度文案，连接过程中会被不断更新。
   String get progress => _progress;
+  /// @brief 失败原因，未失败时为 null。
   SshFailure? get failure => _failure;
 
-  /// 会话标题。优先用远端通过转义序列设置的标题，否则用连接昵称。
+  /// @brief 会话标题。
+  ///
+  /// 优先用远端通过转义序列设置的标题，否则用连接昵称。
   String get title =>
       (_terminalTitle == null || _terminalTitle!.isEmpty)
           ? connection.nickname
           : _terminalTitle!;
 
+  /// @brief Ctrl 是否处于待生效（高亮）状态。
   bool get ctrlArmed => _ctrlArmed;
+  /// @brief Alt 是否处于待生效（高亮）状态。
   bool get altArmed => _altArmed;
 
-  /// 当前字号（逻辑像素）。
+  /// @brief 当前字号（逻辑像素）。
+  ///
+  /// 由设置里的原始值乘 [fontSizeScale] 换算而来。
   double get fontSize {
     final raw = _fontSizeOverride ?? settings.terminalFontSize;
     return raw * fontSizeScale;
   }
 
-  /// 当前字号对应的原始设置值，用于设置页回显。
+  /// @brief 当前字号对应的原始设置值，用于设置页回显。
   int get fontSizeSetting => _fontSizeOverride ?? settings.terminalFontSize;
 
+  /// @brief 传给 [Terminal] 的字体样式（字号与字体族）。
   TerminalStyle get textStyle => TerminalStyle(
         fontSize: fontSize,
         fontFamily: TerminalFonts.familyOf(settings.terminalFont),
         fontFamilyFallback: TerminalFonts.fallback,
       );
 
+  /// @brief 终端原始配色主题，供菜单、失败页等使用。
   TerminalTheme get theme => JuiceTerminalThemes.build(settings.terminalThemeIndex);
 
-  /// 终端**画布**用的配色：底色额外叠一层白色（原版实测 12%）。
+  /// @brief 终端**画布**用的配色：底色额外叠一层白色（原版实测 12%）。
   ///
   /// `TerminalView` 自己会画底色，所以必须把叠加写进传给它的主题里；
   /// [theme] 保持原始值，供菜单/失败页等其它地方使用。
@@ -217,13 +267,15 @@ class TerminalSessionController extends ChangeNotifier {
         surfaceOverlay: JuiceTerminalThemes.surfaceOverlay,
       );
 
-  /// 快捷键栏底色（原版比画布略暗，见 [JuiceTerminalThemes.keyBarOverlay]）。
+  /// @brief 快捷键栏底色。
+  ///
+  /// 原版比画布略暗，见 [JuiceTerminalThemes.keyBarOverlay]。
   Color get keyBarBackground => JuiceTerminalThemes.blendWithForeground(
         settings.terminalThemeIndex,
         JuiceTerminalThemes.keyBarOverlay,
       );
 
-  /// 等交互回调贴上（最多 5 秒，每 50ms 查一次）。
+  /// @brief 等交互回调贴上（最多 5 秒，每 50ms 查一次）。
   ///
   /// 消除 `SessionHost.acquire` 与 `terminal_page` 之间"先建会话、后挂回调"的竞态：
   /// 首次连接新主机时，主机密钥质询会早于回调到达。
@@ -236,7 +288,7 @@ class TerminalSessionController extends ChangeNotifier {
     return value;
   }
 
-  /// 建立连接。
+  /// @brief 建立连接。
   Future<void> connect() async {
     _state = TerminalSessionState.connecting;
     _failure = null;
@@ -316,7 +368,7 @@ class TerminalSessionController extends ChangeNotifier {
     }
   }
 
-  /// 主动断开当前会话。
+  /// @brief 主动断开当前会话。
   ///
   /// 由终端页在「返回键 → 否」这条路径上调用，对应原版
   /// `BackgroundPrompt` 选择「否」时执行的断连分支。
@@ -328,18 +380,20 @@ class TerminalSessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 断开并重新连接。
+  /// @brief 断开并重新连接。
   Future<void> reconnect() async {
     await _teardown();
     await connect();
   }
 
+  /// @brief 把会话置为失败态并广播原因。
   void _fail(SshFailure failure) {
     _failure = failure;
     _state = TerminalSessionState.failed;
     notifyListeners();
   }
 
+  /// @brief 远端输出流正常结束（shell 退出）时的收尾处理。
   void _handleRemoteClosed() {
     if (_state == TerminalSessionState.connected) {
       _state = TerminalSessionState.closed;
@@ -349,7 +403,7 @@ class TerminalSessionController extends ChangeNotifier {
 
   // ---------------------------------------------------------- 终端回调 --
 
-  /// 设备属性（DA）应答：`ESC[?1;2c` / `ESC[>0;276;0c` 这类。
+  /// @brief 设备属性（DA）应答：`ESC[?1;2c` / `ESC[>0;276;0c` 这类。
   ///
   /// xterm 会替终端回答设备属性查询（`ESC[c` → `ESC[?1;2c`），但它自己的解析器把
   /// **任何**以 `c` 结尾的 CSI 都当查询 —— 分不清自己那条应答和查询的区别。于是
@@ -364,7 +418,7 @@ class TerminalSessionController extends ChangeNotifier {
   static final RegExp _deviceAttributesAnswer =
       RegExp(r'^\x1b\[[>?][0-9;]*c$');
 
-  /// 终端要往远端发送数据。
+  /// @brief 终端要往远端发送数据。
   void _handleTerminalOutput(String data) {
     final session = _session;
     if (session == null || _state != TerminalSessionState.connected) return;
@@ -388,7 +442,9 @@ class TerminalSessionController extends ChangeNotifier {
     session.write(payload);
   }
 
-  /// 字符 → 控制字符。与原版 emulator 的换算一致：
+  /// @brief 字符 → 控制字符。
+  ///
+  /// 与原版 emulator 的换算一致：
   /// `a`–`z` 映射到 1–26，`@`–`_`（含 `[ \ ] ^ _`）映射到 0–31，`?` 映射到 127。
   static int? _controlCharacter(int code) {
     if (code >= 0x61 && code <= 0x7A) return code - 0x60; // a-z → ^A..^Z
@@ -397,6 +453,7 @@ class TerminalSessionController extends ChangeNotifier {
     return null;
   }
 
+  /// @brief 终端尺寸回调：记住新的列 / 行数并同步给远端 PTY。
   void _handleTerminalResize(
     int width,
     int height,
@@ -408,6 +465,7 @@ class TerminalSessionController extends ChangeNotifier {
     _session?.resize(width, height, pixelWidth: pixelWidth, pixelHeight: pixelHeight);
   }
 
+  /// @brief 响铃回调，按设置里的响铃模式决定震动 / 通知 / 忽略。
   void _handleBell() {
     // "终端确实收到了 \a" 的直接证据（release 构建也会打到 logcat 的 flutter 标签）。
     // 没有这行时，"模式 1 下没有通知"既可能是走了震动分支，也可能是铃压根没响。
@@ -422,6 +480,7 @@ class TerminalSessionController extends ChangeNotifier {
     }
   }
 
+  /// @brief 窗口标题变化回调（远端通过转义序列设置）。
   void _handleTitleChange(String title) {
     _terminalTitle = title;
     notifyListeners();
@@ -429,7 +488,7 @@ class TerminalSessionController extends ChangeNotifier {
 
   // ------------------------------------------------------------ 按键 --
 
-  /// 处理额外键行抛出的 tag。
+  /// @brief 处理额外键行抛出的 tag。
   ///
   /// 正数 tag 是 Android `KeyEvent` 键码，映射到 xterm 的 [TerminalKey]，
   /// 这样连 `DECCKM`（应用方向键模式）都能像原版一样被正确响应 ——
@@ -494,7 +553,7 @@ class TerminalSessionController extends ChangeNotifier {
     }
   }
 
-  /// Android `KeyEvent` 键码 → xterm 按键。
+  /// @brief Android `KeyEvent` 键码 → xterm 按键；无对应项时返回 null。
   static TerminalKey? _terminalKeyForAndroidKeyCode(int keyCode) {
     switch (keyCode) {
       case KeyTag.dpadUp:
@@ -526,17 +585,19 @@ class TerminalSessionController extends ChangeNotifier {
     }
   }
 
+  /// @brief 设置 Ctrl 待生效状态并刷新界面高亮。
   void _setCtrlArmed(bool value) {
     _ctrlArmed = value;
     notifyListeners();
   }
 
+  /// @brief 设置 Alt 待生效状态并刷新界面高亮。
   void _setAltArmed(bool value) {
     _altArmed = value;
     notifyListeners();
   }
 
-  /// 解除两个修饰键的待生效状态（例如点开菜单时）。
+  /// @brief 解除两个修饰键的待生效状态（例如点开菜单时）。
   void clearModifiers() {
     if (!_ctrlArmed && !_altArmed) return;
     _ctrlArmed = false;
@@ -546,7 +607,7 @@ class TerminalSessionController extends ChangeNotifier {
 
   // ---------------------------------------------------------- 字号 --
 
-  /// 在会话中调整字号。原版支持用音量键操作。
+  /// @brief 在会话中调整字号。原版支持用音量键操作。
   void adjustFontSize(int delta) {
     final next = (fontSizeSetting + delta).clamp(1, 30);
     if (next == fontSizeSetting) return;
@@ -559,10 +620,10 @@ class TerminalSessionController extends ChangeNotifier {
 
   // ---------------------------------------------------------- 输入 --
 
-  /// 粘贴文本。走 [Terminal.paste] 以便遵循远端的 bracketed paste 设置。
+  /// @brief 粘贴文本。走 [Terminal.paste] 以便遵循远端的 bracketed paste 设置。
   void paste(String text) => terminal.paste(text);
 
-  /// 直接在会话里执行一条命令（用于 Snippet）。
+  /// @brief 直接在会话里执行一条命令（用于 Snippet）。
   ///
   /// 原版行为是把命令内容写入终端（而不是另开 exec 通道），
   /// 这样用户能看见命令回显，也符合"在会话里跑脚本"的预期。
@@ -571,15 +632,16 @@ class TerminalSessionController extends ChangeNotifier {
     _session?.write(content.endsWith('\n') ? content : '$content\n');
   }
 
-  /// 往会话写入原始字节（例如 Ctrl+C）。
+  /// @brief 往会话写入原始字节（例如 Ctrl+C）。
   void sendBytes(List<int> bytes) => _session?.writeBytes(bytes);
 
-  /// 往会话写入文本。
+  /// @brief 往会话写入文本。
   void sendText(String text) => _session?.write(text);
 
-  /// 取当前会话的可见文本，用于 "Copy (whole session)"。
+  /// @brief 取当前会话的可见文本，用于 "Copy (whole session)"。
   String get bufferText => terminal.buffer.getText().trimRight();
 
+  /// @brief 回收会话资源：停端口转发、取消输出订阅、关闭 SSH 会话。
   Future<void> _teardown() async {
     final forwardService = _forwardService;
     _forwardService = null;
@@ -595,6 +657,7 @@ class TerminalSessionController extends ChangeNotifier {
     _session = null;
   }
 
+  /// @brief 释放控制器：先断开会话，再交给父类销毁通知机制。
   @override
   Future<void> dispose() async {
     await _teardown();

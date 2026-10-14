@@ -10,8 +10,7 @@ import '../widgets/juice_alert_dialog.dart';
 import '../widgets/juice_form.dart';
 import 'identity_editor_screen.dart';
 
-/// 新建 / 编辑连接 —— 对应原版
-/// `com.sonelli.juicessh.activities.ManageConnectionActivity`。
+/// @brief 新建 / 编辑连接 —— 对应原版 `activities.ManageConnectionActivity`。
 ///
 /// ### 布局依据 —— `res/layout/manage_connection.xml`（字段与顺序逐条对照）
 /// ```
@@ -116,54 +115,70 @@ import 'identity_editor_screen.dart';
 /// 3. **端口校验**：原版没有范围校验；按任务要求补上 1–65535 校验，
 ///    提示文案因原版无对应键而借用 `@string/invalid_address`（见 [_invalidPortKey]）。
 class ConnectionEditorScreen extends StatefulWidget {
+  /// @brief 创建连接编辑页。
   const ConnectionEditorScreen({super.key, this.connection});
 
-  /// 为 null 表示「新建连接」，否则编辑这条连接。
+  /// @brief 为 null 表示「新建连接」，否则编辑这条连接。
   final Connection? connection;
 
+  /// @brief 创建本页的 State。
   @override
   State<ConnectionEditorScreen> createState() => _ConnectionEditorScreenState();
 }
 
+/// @brief 连接编辑页的 State：持有表单控制器、下拉候选与保存逻辑。
 class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
+  /// @brief 数据库单例，本页读写连接的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief `@id/nickname_value`（昵称）输入框的控制器。
   final TextEditingController _nickname = TextEditingController();
+  /// @brief `@id/address_value`（地址）输入框的控制器。
   final TextEditingController _address = TextEditingController();
+  /// @brief `@id/port_value`（端口）输入框的控制器，默认 22。
   final TextEditingController _port = TextEditingController(text: '22');
+  /// @brief `@id/mosh_command_value`（mosh 命令）输入框的控制器。
   final TextEditingController _moshCommand = TextEditingController();
 
+  /// @brief `@id/type_spinner` 的当前值，默认 SSH。
   ConnectionType _type = ConnectionType.ssh;
+  /// @brief `@id/backspaceModeSpinner` 的当前值，默认 `del`。
   BackspaceMode _backspaceMode = BackspaceMode.del;
 
-  /// `@id/via_spinner` 的当前值；null 表示占位项（`via` 为空）。
+  /// @brief `@id/via_spinner` 的当前值；null 表示占位项（`via` 为空）。
   int? _viaId;
 
-  /// `@id/snippetSpinner` 的当前值；null 表示占位项（`snippet` 为空）。
+  /// @brief `@id/snippetSpinner` 的当前值；null 表示占位项（`snippet` 为空）。
   int? _snippetId;
 
-  /// `@id/idSpinner`：身份按**认证尝试顺序**排列，下标即 `position`。
+  /// @brief `@id/idSpinner`：身份按**认证尝试顺序**排列，下标即 `position`。
   ///
   /// 原版是单选（长度 0 或 1），这里扩展成多选；保存时整串写进
   /// `connectionidentity.position`。
   final List<int> _identityIds = <int>[];
 
-  /// `@id/group_selector_holder`：已选分组（多选）。
+  /// @brief `@id/group_selector_holder`：已选分组（多选）。
   final List<int> _groupIds = <int>[];
 
+  /// @brief 「连接方式」下拉的候选连接（编辑时已剔除自己）。
   List<Connection> _connections = const [];
+  /// @brief 全部身份，供身份多选框使用。
   List<Identity> _identities = const [];
+  /// @brief 全部片段，供「运行片段」下拉使用。
   List<Snippet> _snippets = const [];
+  /// @brief 全部分组，供分组多选框使用。
   List<ConnectionGroup> _groups = const [];
 
-  /// `Config.d("mosh:mosh-server")` 的默认值。
+  /// @brief `Config.d("mosh:mosh-server")` 的默认值。
   ///
   /// 原版在 `onCreate` 里把它填进 `@id/mosh_command_value`，保存时若
   /// 文本仍等于默认值就把 `moshCommand` 写成 `null`（即"用默认"）。
   late final String _defaultMoshCommand = _loadDefaultMoshCommand();
 
+  /// @brief 是否仍在载入数据；载入完成前保存按钮不可点。
   bool _loading = true;
 
+  /// @brief 读取 mosh 服务端命令的默认值（来自设置）。
   String _loadDefaultMoshCommand() {
     try {
       return SettingsController.instance.moshServerCommand;
@@ -173,12 +188,14 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     }
   }
 
+  /// @brief 首次进入时载入下拉候选与编辑数据。
   @override
   void initState() {
     super.initState();
     _load();
   }
 
+  /// @brief 释放本页持有的输入框控制器。
   @override
   void dispose() {
     _nickname.dispose();
@@ -190,6 +207,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // ------------------------------------------------------------------ 载入 --
 
+  /// @brief 读库并回填表单；新建时只填默认值。
   Future<void> _load() async {
     final editing = widget.connection;
 
@@ -250,6 +268,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // ------------------------------------------------------------- 展示辅助 --
 
+  /// @brief 标题文案：新建用 `new_connection`，编辑用 `update_connection`。
   String get _title {
     final connection = widget.connection;
     if (connection == null) return context.s('new_connection');
@@ -257,6 +276,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     return context.s('update_connection');
   }
 
+  /// @brief 按 id 在已载入的身份里查找，找不到返回 null。
   Identity? _identityById(int id) {
     for (final identity in _identities) {
       if (identity.id == id) return identity;
@@ -264,6 +284,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     return null;
   }
 
+  /// @brief 按 id 在已载入的分组里查找，找不到返回 null。
   ConnectionGroup? _groupById(int id) {
     for (final group in _groups) {
       if (group.id == id) return group;
@@ -271,7 +292,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     return null;
   }
 
-  /// 连接类型下拉的条目文案。
+  /// @brief 连接类型下拉的条目文案。
   ///
   /// 取自 `ConnectionTypeSpinnerAdapter`（`jh0`）：`@string/ssh` /
   /// `@string/telnet` / `@string/mosh` / `@string/local_device`。
@@ -284,7 +305,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
         ConnectionType.local => context.s('local_device'),
       };
 
-  /// 退格键下拉的条目文案。
+  /// @brief 退格键下拉的条目文案。
   ///
   /// 取自 `BackspaceModeSpinnerAdapter`（`fh0`）：
   /// 索引 0 → `@string/backspace_mode_default`，
@@ -294,7 +315,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
         BackspaceMode.backspace => context.s('backspace_mode_legacy'),
       };
 
-  /// `@id/port_value` 校验失败时的提示键。
+  /// @brief `@id/port_value` 校验失败时的提示键。
   ///
   /// **推断说明**：原版 3.2.2 对端口不做校验，`strings.xml` 里也没有
   /// "端口非法"这一类键（`you_must_enter_a_local_port` /
@@ -303,7 +324,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
   /// 它是原版真实的校验类提示，含义最接近。
   static const String _invalidPortKey = 'invalid_address';
 
-  /// 弹一条 Toast 等价提示（原版用 `Toast.makeText(...).show()`）。
+  /// @brief 弹一条 Toast 等价提示（原版用 `Toast.makeText(...).show()`）。
   ///
   /// SnackBar 文案与 `SnackBar` 的默认行为等价，且本项目其它编辑页
   /// （`identity_editor_screen.dart`）也是这么做的。
@@ -313,7 +334,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // ------------------------------------------------------------------ 保存 --
 
-  /// 保存 —— 对应 ActionBar 上的 `menu_item_save`。
+  /// @brief 保存 —— 对应 ActionBar 上的 `menu_item_save`。
   ///
   /// 顺序照抄原版 `ManageConnectionActivity.v()`：
   /// 地址校验 → 身份校验 → 写 `connection` → 写 `connectionidentity`
@@ -383,7 +404,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // ------------------------------------------------------- 身份：多选 + 调序 --
 
-  /// 打开身份多选选择框（标题 `@string/choose_an_identity`）。
+  /// @brief 打开身份多选选择框（标题 `@string/choose_an_identity`）。
   ///
   /// 勾选顺序即认证尝试顺序，返回的列表已按该顺序排好。
   ///
@@ -419,7 +440,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     });
   }
 
-  /// 选择框里的 `@string/_new...` 入口：跳到新建身份页。
+  /// @brief 选择框里的 `@string/_new...` 入口：跳到新建身份页。
   ///
   /// 原版走 `startActivityForResult(ManageIdentityActivity, 2)`，
   /// 回来后刷新下拉；这里 push 之后重新拉一次身份列表。
@@ -433,7 +454,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     setState(() => _identities = identities);
   }
 
-  /// 交换两个身份的顺序（认证尝试顺序）。
+  /// @brief 交换两个身份的顺序（认证尝试顺序）。
   void _moveIdentity(int index, int delta) {
     final target = index + delta;
     if (target < 0 || target >= _identityIds.length) return;
@@ -443,14 +464,14 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     });
   }
 
-  /// 把某个身份从列表里去掉。
+  /// @brief 把某个身份从列表里去掉。
   void _removeIdentity(int index) {
     setState(() => _identityIds.removeAt(index));
   }
 
   // --------------------------------------------------------- 分组：多选 --
 
-  /// 打开分组多选选择框。
+  /// @brief 打开分组多选选择框。
   ///
   /// 原版 `MultiSelector` 点 `@string/add_to_group` 时直接弹列表，
   /// 列表为空就是一个空选择框（只留 Cancel / OK），这里保持一致，
@@ -470,6 +491,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建页面骨架：AppBar（保存按钮）+ 表单 / 载入指示。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -510,6 +532,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     );
   }
 
+  /// @brief 构建表单主体，逐行对应原版 `manage_connection.xml`。
   Widget _buildForm(BuildContext context) {
     final s = context.s;
     final isLocal = _type == ConnectionType.local;
@@ -727,7 +750,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     );
   }
 
-  /// 类型下拉改变：mosh 行需要跟着出现 / 消失。
+  /// @brief 类型下拉改变：mosh 行需要跟着出现 / 消失。
   void _onTypeChanged(int? index) {
     if (index == null) return;
     final type = ConnectionType.values[index];
@@ -740,7 +763,7 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     });
   }
 
-  /// `@id/idSpinner` 的显示文本：按认证顺序列出身份昵称。
+  /// @brief `@id/idSpinner` 的显示文本：按认证顺序列出身份昵称。
   String _identitySummary(BuildContext context) {
     // 原版空选时显示的是 `@string/select_one + "..."`（实测 dump 里
     // `itemTitle` 的文案就是 "Select one..."），不是 `choose_an_identity`
@@ -752,12 +775,14 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
     return names.join(', ');
   }
 
+  /// @brief 身份 id → 昵称，查不到时显示 `#id`。
   String _identityName(BuildContext context, int id) =>
       _identityById(id)?.nickname ?? '#$id';
 
+  /// @brief 分组 id → 名称，查不到时显示 `#id`。
   String _groupName(BuildContext context, int id) => _groupById(id)?.name ?? '#$id';
 
-  /// `@id/via_spinner` 的条目文本。
+  /// @brief `@id/via_spinner` 的条目文本。
   ///
   /// 原版 `ih0` 调 `Connection.w()`，这里用等价的「昵称（地址:端口）」，
   /// 昵称为空时退回 `地址:端口`。
@@ -769,26 +794,31 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 
   // --------------------------------------------------------------- 度量常量 --
 
-  /// `@dimen/activity_padding` —— 16dp。
+  /// @brief `@dimen/activity_padding` —— 16dp。
   static const double _activityPadding = 16;
 
-  /// 每行之间的 `android:layout_marginTop="8.0dp"`。
+  /// @brief 每行之间的 `android:layout_marginTop="8.0dp"`。
   static const double _rowSpacing = 8;
 
-  /// `@id/port_value` 的实测宽度：`[262,477]` = 215px = 81.9dp
+  /// @brief `@id/port_value` 的实测宽度：`[262,477]` = 215px = 81.9dp
   /// （`android:ems="5"` + `maxEms="5"` 下的实际排版宽度）。
   static const double _portFieldWidth = 215 / 2.625;
 
-  /// 本页 `TableLayout` 第 0 列的宽度（实测 207px = 78.86dp）——由最宽的标签
-  /// （"Backspace:" / "Connect Via:"）决定，**整列等宽**，不是每个标签各算各的。
+  /// @brief 本页 `TableLayout` 第 0 列的宽度（实测 207px = 78.86dp）。
+  ///
+  /// 由最宽的标签（"Backspace:" / "Connect Via:"）决定，**整列等宽**，
+  /// 不是每个标签各算各的。
   static const double _labelColumnWidth = 207 / 2.625;
 
-  /// `@id/group_selector_holder` 里按钮的左右内缩：实测按钮 `[84,1611][996,1706]`，
-  /// 在表单区域 `[42,1038]` 里再左右各缩 42px = 16dp
-  /// （`multi_selector.xml` 自带的内边距）。
+  /// @brief `@id/group_selector_holder` 里按钮的左右内缩。
+  ///
+  /// 实测按钮 `[84,1611][996,1706]`，在表单区域 `[42,1038]` 里再左右各缩
+  /// 42px = 16dp（`multi_selector.xml` 自带的内边距）。
   static const double _multiSelectorInset = 16;
 
-  /// 本页的一行「标签 + 控件」。度量都在 `widgets/juice_form.dart` 里，
+  /// @brief 本页的一行「标签 + 控件」。
+  ///
+  /// 度量都在 `widgets/juice_form.dart` 里，
   /// 这里只固定本页的标签列宽。
   JuiceFormRow _row({
     required String label,
@@ -808,11 +838,12 @@ class _ConnectionEditorScreenState extends State<ConnectionEditorScreen> {
 // ===========================================================================
 
 
-/// 充当 `Spinner` 的紧凑下拉框（原版行高 36dp）。
+/// @brief 充当 `Spinner` 的紧凑下拉框（原版行高 36dp）。
 ///
 /// 这里没有直接用 `DropdownButtonFormField`，因为它会把当前值画成
 /// `InputDecorator` 的浮动标签，和原版 Spinner 的观感差得较远。
 class _Dropdown<T> extends StatelessWidget {
+  /// @brief 创建紧凑下拉框。
   const _Dropdown({
     required this.value,
     required this.items,
@@ -820,11 +851,16 @@ class _Dropdown<T> extends StatelessWidget {
     this.hint,
   });
 
+  /// @brief 当前选中的值；为 null 时显示 [hint]。
   final T? value;
+  /// @brief 下拉候选条目列表。
   final List<DropdownMenuItem<T>> items;
+  /// @brief 选中项变化时的回调。
   final ValueChanged<T?> onChanged;
+  /// @brief 没有选中值时的占位提示文案。
   final String? hint;
 
+  /// @brief 构建 36dp 高的无下划线下拉框。
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -856,13 +892,17 @@ class _Dropdown<T> extends StatelessWidget {
   }
 }
 
-/// 一行「值 + 点击弹出选择框」，替代原版 `Spinner` 的单选观感。
+/// @brief 一行「值 + 点击弹出选择框」，替代原版 `Spinner` 的单选观感。
 class _SelectorValue extends StatelessWidget {
+  /// @brief 创建「值 + 下拉箭头」的一行。
   const _SelectorValue({required this.text, required this.onTap});
 
+  /// @brief 这一行显示的文本。
   final String text;
+  /// @brief 点击回调（弹出选择框）。
   final VoidCallback onTap;
 
+  /// @brief 构建可点击的一行值文本 + 下拉箭头。
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -887,10 +927,11 @@ class _SelectorValue extends StatelessWidget {
   }
 }
 
-/// 已选身份的「序号 + 昵称 + 调序/移除」行。
+/// @brief 已选身份的「序号 + 昵称 + 调序/移除」行。
 ///
 /// 序号即 `connectionidentity.position + 1`，也就是 SSH 认证的尝试次序。
 class _SelectedIdentityRow extends StatelessWidget {
+  /// @brief 创建「序号 + 昵称 + 调序/移除」行。
   const _SelectedIdentityRow({
     required this.name,
     required this.position,
@@ -901,14 +942,22 @@ class _SelectedIdentityRow extends StatelessWidget {
     required this.onRemove,
   });
 
+  /// @brief 身份昵称。
   final String name;
+  /// @brief 序号（0 起）；显示时 +1 即认证次序。
   final int position;
+  /// @brief 是否可上移；false 时上移按钮禁用。
   final bool canMoveUp;
+  /// @brief 是否可下移；false 时下移按钮禁用。
   final bool canMoveDown;
+  /// @brief 上移一位的回调。
   final VoidCallback onMoveUp;
+  /// @brief 下移一位的回调。
   final VoidCallback onMoveDown;
+  /// @brief 从已选身份里移除的回调。
   final VoidCallback onRemove;
 
+  /// @brief 构建「序号 + 昵称 + 上移/下移/移除」一行。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -960,13 +1009,17 @@ class _SelectedIdentityRow extends StatelessWidget {
   }
 }
 
-/// 已选分组的「昵称 + X」行，对应 `multi_selector_item.xml`。
+/// @brief 已选分组的「昵称 + X」行，对应 `multi_selector_item.xml`。
 class _SelectorRow extends StatelessWidget {
+  /// @brief 创建「分组名 + X」一行。
   const _SelectorRow({required this.name, required this.onRemove});
 
+  /// @brief 分组昵称。
   final String name;
+  /// @brief 移除该分组的回调。
   final VoidCallback onRemove;
 
+  /// @brief 构建已选分组的一行（名称 + 移除按钮）。
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
@@ -1001,7 +1054,7 @@ class _SelectorRow extends StatelessWidget {
 // 身份多选对话框
 // ===========================================================================
 
-/// 身份多选对话框 —— 对应原版 `@id/idSpinner` + `@string/choose_an_identity`。
+/// @brief 身份多选对话框 —— 对应原版 `@id/idSpinner` 行。
 ///
 /// **勾选顺序就是认证尝试顺序**：条目右侧会显示它当前排在第几位；
 /// 取消再重新勾选会把它挪到队尾。
@@ -1011,21 +1064,26 @@ class _SelectorRow extends StatelessWidget {
 /// * `true` —— 点了末尾的 `@string/_new...`，调用方应去新建身份；
 /// * `null` —— Cancel 或点外部关闭（调用方不做改动）。
 class _IdentityPickerDialog extends StatefulWidget {
+  /// @brief 创建身份多选对话框。
   const _IdentityPickerDialog({required this.identities, required this.selected});
 
+  /// @brief 候选身份列表。
   final List<Identity> identities;
 
-  /// 进入时的已选顺序。
+  /// @brief 进入时的已选顺序。
   final List<int> selected;
 
+  /// @brief 创建身份多选框的 State。
   @override
   State<_IdentityPickerDialog> createState() => _IdentityPickerDialogState();
 }
 
+/// @brief 身份多选框的 State：维护勾选顺序（即认证顺序）。
 class _IdentityPickerDialogState extends State<_IdentityPickerDialog> {
-  /// 勾选顺序即认证顺序。
+  /// @brief 勾选顺序即认证顺序。
   late final List<int> _order = List<int>.of(widget.selected);
 
+  /// @brief 勾选 / 取消勾选一个身份，新勾选的排到队尾。
   void _toggle(int identityId, bool checked) {
     setState(() {
       if (checked) {
@@ -1036,6 +1094,7 @@ class _IdentityPickerDialogState extends State<_IdentityPickerDialog> {
     });
   }
 
+  /// @brief 构建身份多选列表 + `_new...` 新建入口。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -1109,22 +1168,29 @@ class _IdentityPickerDialogState extends State<_IdentityPickerDialog> {
 // 分组多选对话框
 // ===========================================================================
 
-/// 分组多选对话框 —— 对应原版 `xj0`（`MultiSelector`）弹出的选择框。
+/// @brief 分组多选对话框 —— 对应原版 `xj0`（`MultiSelector`）弹出的选择框。
 ///
 /// 分组没有顺序语义，只做勾选。
 class _GroupPickerDialog extends StatefulWidget {
+  /// @brief 创建分组多选对话框。
   const _GroupPickerDialog({required this.groups, required this.selected});
 
+  /// @brief 候选分组列表。
   final List<ConnectionGroup> groups;
+  /// @brief 进入时已勾选的分组 id。
   final List<int> selected;
 
+  /// @brief 创建分组多选框的 State。
   @override
   State<_GroupPickerDialog> createState() => _GroupPickerDialogState();
 }
 
+/// @brief 分组多选框的 State：维护已勾选的分组 id 集合。
 class _GroupPickerDialogState extends State<_GroupPickerDialog> {
+  /// @brief 已勾选的分组 id（分组无顺序语义，故用 Set）。
   late final Set<int> _selected = <int>{...widget.selected};
 
+  /// @brief 构建分组勾选列表。
   @override
   Widget build(BuildContext context) {
     final s = context.s;

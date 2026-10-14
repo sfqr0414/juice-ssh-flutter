@@ -8,7 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'models.dart';
 
-/// SQLite 存储层。
+/// @brief SQLite 存储层，表名与列名沿用原版 JuiceSSH 的 ORMLite 结构。
 ///
 /// 表名与列名沿用原版 JuiceSSH 的 ORMLite 结构，但**不能**只照抄包内
 /// `res/raw/ormlite_config.txt` 里的 `fieldName=`（那是 Java 字段名）：ORMLite
@@ -25,12 +25,16 @@ import 'models.dart';
 /// 其余业务表（`connection` / `identity` / `snippet` …）的列名仍是 `fieldName`
 /// 形态，尚未对齐，详见 `docs/IMPLEMENTATION-NOTES.md` 第 55/56 轮。
 class JuiceDatabase {
+  /// @brief 用已打开的 sqflite 数据库构造（外部请走 `open()`）。
   JuiceDatabase._(this._db);
 
+  /// @brief 底层 sqflite 数据库句柄
   final Database _db;
 
+  /// @brief 进程内单例，`open()` 成功后填入
   static JuiceDatabase? _instance;
 
+  /// @brief 取已初始化的单例，未初始化时抛 StateError。
   static JuiceDatabase get instance {
     final value = _instance;
     if (value == null) {
@@ -39,11 +43,15 @@ class JuiceDatabase {
     return value;
   }
 
+  /// @brief 库结构版本号，见下方说明。
+  ///
   /// v2：设置从自建的 `config` 表迁到原版的 `configfield` + `configvalue`。
   static const int schemaVersion = 2;
+
+  /// @brief 数据库文件名，放在 `getDatabasesPath()` 目录下
   static const String fileName = 'juicessh.db';
 
-  /// 桌面平台需要先初始化 sqflite 的 FFI 后端。
+  /// @brief 桌面平台需要先初始化 sqflite 的 FFI 后端。
   ///
   /// 移动端**保留**平台通道后端：本轮试过全平台改走 FFI（`databaseFactoryFfi`），
   /// 开库耗时实测没有变化（11~34ms vs 26~34ms，那 500ms 根本不在这段里），
@@ -55,6 +63,7 @@ class JuiceDatabase {
     }
   }
 
+  /// @brief 打开（必要时建库/建表）数据库并设为单例，返回该实例。
   static Future<JuiceDatabase> open({String? directory}) async {
     final t0 = DateTime.now();
     final baseDir = directory ?? await getDatabasesPath();
@@ -122,14 +131,18 @@ class JuiceDatabase {
     return instance;
   }
 
+  /// @brief 关闭数据库并清空单例（测试与退出时用）。
   Future<void> close() async {
     await _db.close();
     _instance = null;
   }
 
+  /// @brief 底层 sqflite 句柄，供少数需要直接发 SQL 的调用方使用。
   Database get raw => _db;
 
-  /// 建表语句。列名与原版 ORMLite 的字段名一致；
+  /// @brief 全部建表与建索引语句。
+  ///
+  /// 列名与原版 ORMLite 的字段名一致；
   /// `group` / `key` 是 SQL 关键字，统一加双引号。
   static const List<String> _schema = <String>[
     '''
@@ -272,8 +285,9 @@ class JuiceDatabase {
     ..._configSchema,
   ];
 
-  /// 原版 `configfield` 的 25 条「键 + 默认值」，逐条抄自运行中的原版库
-  /// （顺序即原版的写入顺序）。原版把 `session:timeout`、`pinlock:enabled`
+  /// @brief 原版 `configfield` 的 25 条「键 + 默认值」，逐条抄自运行中的原版库。
+  ///
+  /// 顺序即原版的写入顺序。原版把 `session:timeout`、`pinlock:enabled`
   /// 这类东西放在加密的 `session:cache` JSON 里，因此它们**不**在这份清单中。
   static const List<(String, String)> _configDefaults = [
     ('notifications:enabled', 'true'),
@@ -306,7 +320,7 @@ class JuiceDatabase {
     ('terminal:font', ''),
   ];
 
-  /// 建表语句逐字取自原版真实库（见 `docs/original-schema.sql`）。
+  /// @brief 配置两表的建表语句，逐字取自原版真实库。
   static const List<String> _configSchema = [
     '''
     CREATE TABLE `configfield` (`defaultValue` VARCHAR , `name` VARCHAR , `encrypted` VARCHAR , `id` VARCHAR , `isEncrypted` SMALLINT , `lastUpdatedBy_id` VARCHAR , `modified` BIGINT , `owner_id` VARCHAR , PRIMARY KEY (`id`) )
@@ -319,9 +333,12 @@ class JuiceDatabase {
     'CREATE INDEX `configvalue_id_idx` ON `configvalue` ( `id` )',
   ];
 
+  /// @brief 生成 UUID 用的随机源
   static final Random _random = Random();
 
-  /// UUID v4 —— 与原版 ORMLite 给 `@DatabaseField(id = true) String id`
+  /// @brief 生成 UUID v4 字符串。
+  ///
+  /// 与原版 ORMLite 给 `@DatabaseField(id = true) String id`
   /// 生成的形态一致（原版库里的 `configfield.id` 就是这种串）。
   static String _uuid() {
     final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
@@ -334,7 +351,9 @@ class JuiceDatabase {
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
-  /// 写入 `configfield` 的键定义与默认值；按 `name` 去重，重复调用不会重复插入。
+  /// @brief 写入 `configfield` 的键定义与默认值。
+  ///
+  /// 按 `name` 去重，重复调用不会重复插入。
   static Future<void> _seedConfigFields(DatabaseExecutor db) async {
     final existing = <String>{
       for (final row in await db.query('configfield', columns: ['name']))
@@ -359,20 +378,24 @@ class JuiceDatabase {
     if (inserted > 0) await batch.commit(noResult: true);
   }
 
+  /// @brief 当前时间戳（毫秒），写入 `modified` 列用。
   static int _now() => DateTime.now().millisecondsSinceEpoch;
 
   // ------------------------------------------------------------------ 连接 --
 
+  /// @brief 全部连接，按昵称不区分大小写升序。
   Future<List<Connection>> connections() async {
     final rows = await _db.query('connection', orderBy: 'nickname COLLATE NOCASE ASC');
     return rows.map(Connection.fromMap).toList();
   }
 
+  /// @brief 按 id 取单条连接，不存在返回 null。
   Future<Connection?> connection(int id) async {
     final rows = await _db.query('connection', where: 'id = ?', whereArgs: [id], limit: 1);
     return rows.isEmpty ? null : Connection.fromMap(rows.first);
   }
 
+  /// @brief 新增或更新一条连接，返回其 id（id 为 0 表示新增）。
   Future<int> saveConnection(Connection value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) {
@@ -383,11 +406,12 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除连接（级联清掉其身份/分组关联与计数器）。
   Future<void> deleteConnection(int id) async {
     await _db.delete('connection', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// 连接名 -> 该连接配置的身份，按尝试顺序。
+  /// @brief 连接名 -> 该连接配置的身份，按尝试顺序。
   Future<List<int>> connectionIdentityIds(int connectionId) async {
     final rows = await _db.query(
       'connectionidentity',
@@ -399,6 +423,7 @@ class JuiceDatabase {
     return rows.map((row) => (row['identity'] as num).toInt()).toList();
   }
 
+  /// @brief 整体替换某条连接的身份列表，`position` 按列表下标写入。
   Future<void> setConnectionIdentities(int connectionId, List<int> identityIds) async {
     await _db.transaction((txn) async {
       await txn.delete('connectionidentity', where: 'connection = ?', whereArgs: [connectionId]);
@@ -413,7 +438,7 @@ class JuiceDatabase {
     });
   }
 
-  /// 连接 -> 所属分组 id 集合。
+  /// @brief 连接 -> 所属分组 id 集合。
   Future<List<int>> groupIdsForConnection(int connectionId) async {
     final rows = await _db.query(
       'connectiongroupmembership',
@@ -424,6 +449,7 @@ class JuiceDatabase {
     return rows.map((row) => (row['group'] as num).toInt()).toList();
   }
 
+  /// @brief 整体替换某条连接的分组列表（先清空再按列表写入）。
   Future<void> setConnectionGroups(int connectionId, List<int> groupIds) async {
     await _db.transaction((txn) async {
       await txn.delete('connectiongroupmembership',
@@ -438,7 +464,7 @@ class JuiceDatabase {
     });
   }
 
-  /// 使用次数 +1，用于"常用连接"与按使用频率排序。
+  /// @brief 使用次数 +1（无行则插入 1），用于"常用连接"与按使用频率排序。
   Future<void> incrementConnectionCounter(int connectionId) async {
     await _db.rawInsert(
       'INSERT INTO connectioncounter (connection, count, modified) VALUES (?, 1, ?) '
@@ -447,6 +473,7 @@ class JuiceDatabase {
     );
   }
 
+  /// @brief 全部连接的 id -> 使用次数映射。
   Future<Map<int, int>> connectionCounters() async {
     final rows = await _db.query('connectioncounter', columns: ['connection', 'count']);
     return {
@@ -455,7 +482,7 @@ class JuiceDatabase {
     };
   }
 
-  /// 清空某条连接的连接历史。
+  /// @brief 清空某条连接的连接历史（长按菜单的 "Clear history"）。
   ///
   /// 对应连接长按菜单里的 "Clear history"：把 `connectioncounter` 里
   /// 该连接那一行删掉，使用次数即回到「从未连接」。
@@ -469,11 +496,13 @@ class JuiceDatabase {
 
   // ------------------------------------------------------------------ 分组 --
 
+  /// @brief 全部分组，按名称不区分大小写升序。
   Future<List<ConnectionGroup>> groups() async {
     final rows = await _db.query('connectiongroup', orderBy: 'name COLLATE NOCASE ASC');
     return rows.map(ConnectionGroup.fromMap).toList();
   }
 
+  /// @brief 新增或更新一个分组，返回其 id。
   Future<int> saveGroup(ConnectionGroup value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) return _db.insert('connectiongroup', map);
@@ -481,22 +510,26 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除分组（成员关系级联删除，连接本身保留）。
   Future<void> deleteGroup(int id) async {
     await _db.delete('connectiongroup', where: 'id = ?', whereArgs: [id]);
   }
 
   // ------------------------------------------------------------------ 身份 --
 
+  /// @brief 全部身份，按昵称不区分大小写升序。
   Future<List<Identity>> identities() async {
     final rows = await _db.query('identity', orderBy: 'nickname COLLATE NOCASE ASC');
     return rows.map(Identity.fromMap).toList();
   }
 
+  /// @brief 按 id 取单个身份，不存在返回 null。
   Future<Identity?> identity(int id) async {
     final rows = await _db.query('identity', where: 'id = ?', whereArgs: [id], limit: 1);
     return rows.isEmpty ? null : Identity.fromMap(rows.first);
   }
 
+  /// @brief 新增或更新一个身份，返回其 id。
   Future<int> saveIdentity(Identity value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) return _db.insert('identity', map);
@@ -504,17 +537,20 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除身份（连接与它的关联级联删除）。
   Future<void> deleteIdentity(int id) async {
     await _db.delete('identity', where: 'id = ?', whereArgs: [id]);
   }
 
   // ------------------------------------------------------------------ 片段 --
 
+  /// @brief 全部片段，按名称不区分大小写升序。
   Future<List<Snippet>> snippets() async {
     final rows = await _db.query('snippet', orderBy: 'name COLLATE NOCASE ASC');
     return rows.map(Snippet.fromMap).toList();
   }
 
+  /// @brief 新增或更新一个片段，返回其 id。
   Future<int> saveSnippet(Snippet value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) return _db.insert('snippet', map);
@@ -522,17 +558,20 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除片段。
   Future<void> deleteSnippet(int id) async {
     await _db.delete('snippet', where: 'id = ?', whereArgs: [id]);
   }
 
   // -------------------------------------------------------------- 端口转发 --
 
+  /// @brief 全部端口转发规则，按名称不区分大小写升序。
   Future<List<PortForward>> portForwards() async {
     final rows = await _db.query('portforward', orderBy: 'name COLLATE NOCASE ASC');
     return rows.map(PortForward.fromMap).toList();
   }
 
+  /// @brief 新增或更新一条端口转发规则，返回其 id。
   Future<int> savePortForward(PortForward value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) return _db.insert('portforward', map);
@@ -540,22 +579,28 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除一条端口转发规则。
   Future<void> deletePortForward(int id) async {
     await _db.delete('portforward', where: 'id = ?', whereArgs: [id]);
   }
 
   // -------------------------------------------------------------- 已知主机 --
 
+  /// @brief 全部已知主机，按主机名不区分大小写升序。
   Future<List<KnownHost>> knownHosts() async {
     final rows = await _db.query('host', orderBy: 'hostname COLLATE NOCASE ASC');
     return rows.map(KnownHost.fromMap).toList();
   }
 
+  /// @brief 按主机名取已知主机，没有记录返回 null。
   Future<KnownHost?> knownHost(String hostname) async {
     final rows = await _db.query('host', where: 'hostname = ?', whereArgs: [hostname], limit: 1);
     return rows.isEmpty ? null : KnownHost.fromMap(rows.first);
   }
 
+  /// @brief 新增或更新一条已知主机，返回其 id。
+  ///
+  /// 主机名有唯一索引，所以 id 为 0 但同名记录已存在时改为更新那一行。
   Future<int> saveKnownHost(KnownHost value) async {
     final map = value.toMap()..['modified'] = _now();
     if (value.id == 0) {
@@ -571,19 +616,21 @@ class JuiceDatabase {
     return value.id;
   }
 
+  /// @brief 按 id 删除一条已知主机。
   Future<void> deleteKnownHost(int id) async {
     await _db.delete('host', where: 'id = ?', whereArgs: [id]);
   }
 
-  /// 对应设置页的 "Clear known hosts"。
+  /// @brief 清空全部已知主机（设置页的 "Clear known hosts"）。
   Future<void> clearKnownHosts() async {
     await _db.delete('host');
   }
 
   // ------------------------------------------------------------------ 设置 --
 
-  /// 读全部设置：`configfield.name` → 生效值（有 `configvalue` 行就用它，
-  /// 否则用 `configfield.defaultValue`）。
+  /// @brief 读全部设置，键名 → 生效值。
+  ///
+  /// 有 `configvalue` 行就用它，否则用 `configfield.defaultValue`。
   ///
   /// 原版对 `terminal:font`、`pinlock:pin`、`session:cache` 这类字符串键用空串
   /// 表示"未设置"，这里读出来统一折成 null，交给各自的默认逻辑处理。
@@ -598,6 +645,7 @@ class JuiceDatabase {
     };
   }
 
+  /// @brief 读单个设置项的生效值，键不存在返回 null。
   Future<String?> config(String key) async {
     final rows = await _db.rawQuery(
       'SELECT COALESCE(v.value, f.defaultValue) AS value FROM configfield f '
@@ -607,9 +655,12 @@ class JuiceDatabase {
     return rows.isEmpty ? null : _normalize(rows.first['value'] as String?);
   }
 
+  /// @brief 把空串（原版的"未设置"）统一折成 null。
   static String? _normalize(String? value) =>
       (value == null || value.isEmpty) ? null : value;
 
+  /// @brief 写一个设置项；值为 null 时等价于删除覆盖值。
+  ///
   /// 只写 `configvalue`。
   ///
   /// 原版的键都先在 `configfield` 里声明过；本地复刻另外用到几个原版不放在
@@ -674,7 +725,7 @@ class JuiceDatabase {
     }
   }
 
-  /// 删掉某个键的覆盖值 —— 之后它回落到 `configfield` 里的默认值。
+  /// @brief 删掉某个键的覆盖值 —— 之后它回落到 `configfield` 里的默认值。
   Future<void> removeConfig(String key) async {
     await _db.rawDelete(
       'DELETE FROM configvalue WHERE field_id IN '
@@ -683,15 +734,17 @@ class JuiceDatabase {
     );
   }
 
-  /// 清空全部覆盖值（键定义与默认值保留）。
+  /// @brief 清空全部覆盖值（键定义与默认值保留）。
   Future<void> clearConfig() async {
     await _db.delete('configvalue');
   }
 
   // ------------------------------------------------------------------ 备份 --
 
-  /// 导出全部业务数据，用于备份/恢复（原版的备份是云端 AES 加密对象，
-  /// 这里提供一个等价的本地明文导出，便于调试与迁移）。
+  /// @brief 导出全部业务数据，用于备份/恢复。
+  ///
+  /// 原版的备份是云端 AES 加密对象，这里提供一个等价的本地明文导出，
+  /// 便于调试与迁移。
   Future<Map<String, Object?>> exportAll() async {
     return {
       'version': schemaVersion,
@@ -708,7 +761,7 @@ class JuiceDatabase {
     };
   }
 
-  /// 用导出的数据整体覆盖本地库。调用方需自行确认。
+  /// @brief 用导出的数据整体覆盖本地库。调用方需自行确认。
   Future<void> importAll(Map<String, Object?> payload) async {
     const tables = [
       'connectionidentity',

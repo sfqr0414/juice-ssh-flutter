@@ -3,19 +3,19 @@ import 'package:flutter/services.dart';
 
 import 'juice_colors.dart';
 
-/// 开关「关」态的拇指颜色（原版实测 `#B9B9B9`，19.4dp 圆）。
+/// @brief 开关「关」态的拇指颜色（原版实测 `#B9B9B9`，19.4dp 圆）。
 const Color _switchThumbOff = Color(0xFFB9B9B9);
 
-/// 开关「关」态的轨道颜色（原版实测 `#E5E5E5`，是描边而非填充）。
+/// @brief 开关「关」态的轨道颜色（原版实测 `#E5E5E5`，是描边而非填充）。
 const Color _switchTrackOff = Color(0xFFE5E5E5);
 
-/// 开关「开」态的拇指颜色（原版实测 `#566C73`）。
+/// @brief 开关「开」态的拇指颜色（原版实测 `#566C73`）。
 const Color _switchThumbOn = Color(0xFF566C73);
 
-/// 开关「开」态的轨道填充色（原版实测 `#CDD3D5`）。
+/// @brief 开关「开」态的轨道填充色（原版实测 `#CDD3D5`）。
 const Color _switchTrackOn = Color(0xFFCDD3D5);
 
-/// 把原版 JuiceSSH 的 AppCompat 主题翻译成 Flutter 的 [ThemeData]。
+/// @brief 把原版 JuiceSSH 的 AppCompat 主题翻译成 Flutter 的 [ThemeData]。
 ///
 /// 关键取值来自 `res/values/styles.xml` 的 `Theme.JuiceSSH` 一系：
 ///
@@ -28,12 +28,14 @@ const Color _switchTrackOn = Color(0xFFCDD3D5);
 /// 原版是 2020 年的 AppCompat/Material 1 风格，所以这里刻意**关闭 Material 3**，
 /// 否则组件形状与配色会和原版明显不同。
 abstract final class JuiceTheme {
-  /// ActionBar 标题字号：`Theme.JuiceSSH.Material.Actionbar.Text` 的 24.0sp。
+  /// @brief ActionBar 标题字号：
+  /// `Theme.JuiceSSH.Material.Actionbar.Text` 的 24.0sp。
   static const double actionBarTitleSize = 24;
 
-  /// 原版 ActionBar 默认高度（Material 规范 56dp）。
+  /// @brief 原版 ActionBar 默认高度（Material 规范 56dp）。
   static const double actionBarHeight = 56;
 
+  /// @brief 按调色板构建整套 [ThemeData]（关闭 Material 3）。
   static ThemeData build(JuicePalette palette) {
     final brightness = palette.isDark ? Brightness.dark : Brightness.light;
 
@@ -224,25 +226,30 @@ abstract final class JuiceTheme {
     );
   }
 
+  /// @brief 亮色主题。
   static ThemeData get light => build(JuicePalette.light);
 
+  /// @brief 暗色主题。
   static ThemeData get dark => build(JuicePalette.dark);
 }
 
-/// 把当前生效的调色板挂到 widget 树上。
+/// @brief 把当前生效的调色板挂到 widget 树上。
 ///
 /// [ThemeData] 只覆盖了标准组件，而原版有大量自己指定的颜色
 /// （列表行标题/副标题、卡片分隔线、复制提示条等），
 /// 这些需要业务代码直接取调色板，所以单独用 InheritedWidget 提供。
 class JuicePaletteScope extends InheritedWidget {
+  /// @brief 创建调色板注入 widget。
   const JuicePaletteScope({
     required this.palette,
     required super.child,
     super.key,
   });
 
+  /// @brief 要注入的调色板。
   final JuicePalette palette;
 
+  /// @brief 取最近的调色板；未挂载时断言失败。
   static JuicePalette of(BuildContext context) {
     final scope =
         context.dependOnInheritedWidgetOfExactType<JuicePaletteScope>();
@@ -250,12 +257,14 @@ class JuicePaletteScope extends InheritedWidget {
     return scope!.palette;
   }
 
+  /// @brief 调色板换了就通知依赖方重建。
   @override
   bool updateShouldNotify(JuicePaletteScope oldWidget) =>
       oldWidget.palette != palette;
 }
 
+/// @brief 给 [BuildContext] 加取调色板的便捷入口。
 extension JuicePaletteContext on BuildContext {
-  /// 当前调色板。
+  /// @brief 当前调色板。
   JuicePalette get palette => JuicePaletteScope.of(this);
 }

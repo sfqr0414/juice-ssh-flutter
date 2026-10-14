@@ -7,7 +7,9 @@ import '../data/juice_database.dart';
 import '../data/models.dart';
 import '../widgets/juice_form.dart';
 
-/// 新建 / 编辑端口转发 —— 对应原版 `activities.ManagePortForwardActivity`。
+/// @brief 新建 / 编辑端口转发。
+///
+/// 对应原版 `activities.ManagePortForwardActivity`。
 ///
 /// `AndroidManifest.xml` 里该 Activity 的 `android:label` 是
 /// `@string/new_port_forward`（"New Port Forward"），
@@ -121,20 +123,23 @@ import '../widgets/juice_form.dart';
 /// （第 507-571 行），空文本保留模型里的旧值；`name` 与 `host` 则不加
 /// `trim()` 直接写回（第 466-504 行）。本文件同样照抄，不做 trim。
 class PortForwardEditorScreen extends StatefulWidget {
+  /// @brief 创建端口转发编辑页。
   const PortForwardEditorScreen({
     super.key,
     this.portForward,
     this.showUseAsProxyRow = false,
   });
 
-  /// 为 null 时是「新建端口转发」，否则编辑传入的这一条。
+  /// @brief 为 null 时是「新建端口转发」，否则编辑传入的这一条。
+  ///
   ///
   /// 说明：`JuiceDatabase` 有 `portForwards()` / `savePortForward()` /
   /// `deletePortForward()`，但**没有** `portForward(int id)`，
   /// 所以这里直接接收整个模型对象，而不是像身份编辑页那样接收 id 再查库。
   final PortForward? portForward;
 
-  /// 是否渲染 `@id/row_use_as_proxy`（"Set as browser proxy"）。
+  /// @brief 是否渲染 `@id/row_use_as_proxy`（"Set as browser proxy"）。
+  ///
   ///
   /// 默认 `false` —— 照抄原版的实际可见行为：`ManagePortForwardActivity.o(I)`
   /// 在 local/remote 分支把它置 GONE，在 SOCKS 分支则完全不碰它，
@@ -145,56 +150,77 @@ class PortForwardEditorScreen extends StatefulWidget {
   /// 两种情况都不会丢数据：保存时该字段的值原样保留。
   final bool showUseAsProxyRow;
 
+  /// @brief 创建本页的 State。
   @override
   State<PortForwardEditorScreen> createState() =>
       _PortForwardEditorScreenState();
 }
 
+/// @brief 端口转发编辑页的状态：表单字段、校验与保存。
 class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
+  /// @brief 数据库单例，本页读写端口转发的唯一入口。
   JuiceDatabase get _db => JuiceDatabase.instance;
 
+  /// @brief `@id/name` 输入框的控制器。
   final TextEditingController _name = TextEditingController();
+
+  /// @brief `@id/remote_host`（目标主机）输入框的控制器。
   final TextEditingController _host = TextEditingController();
+
+  /// @brief `@id/local_port`（"Port (from)"）输入框的控制器。
   final TextEditingController _localPort = TextEditingController();
+
+  /// @brief `@id/remote_port`（"Port (to)"）输入框的控制器。
   final TextEditingController _remotePort = TextEditingController();
 
-  /// 被编辑（或新建）的端口转发。新建时是一个空壳，字段在保存时统一写回。
+  /// @brief 被编辑（或新建）的端口转发；新建时是空壳，保存时统一写回。
   late PortForward _base;
 
-  /// "Connection:" 下拉框的占位项取值。
+  /// @brief "Connection:" 下拉框的占位项取值。
   ///
   /// 原版 `ih0`（`ConnectionSpinnerAdapter`）在列表最前面插了一项占位，
   /// 文案取 `@string/pick_one`（"(Pick one)"，因为构造时 `hasEmptyOption=false`；
   /// 为 true 时用 `@string/optional`）。选中它表示"还没选连接"。
   static const int _noConnection = -1;
 
+  /// @brief 连接下拉框的候选列表，来自 `JuiceDatabase.connections()`。
   List<Connection> _connections = const <Connection>[];
+
+  /// @brief 当前选中的连接 id；null 表示还停在"(Pick one)"占位项。
   int? _connectionId;
+
+  /// @brief 当前转发模式，决定下面几行的可见性。
   PortForwardMode _mode = PortForwardMode.local;
+
+  /// @brief `@id/open_in_browser` 复选框状态。
   bool _openInBrowser = false;
+
+  /// @brief `@id/use_as_proxy` 复选框状态（原版不渲染这一行）。
   bool _useAsProxy = false;
+
+  /// @brief 是否仍在读库；加载期间禁用保存按钮。
   bool _loading = true;
 
   // ------------------------------------------------------------------ 度量 --
   //
   // 全部是 420dpi 下的实测值（1dp = 2.625px），依据见类注释里的表格。
 
-  /// `ScrollView` 的 `padding=@dimen/activity_padding`（16dp）。
+  /// @brief `ScrollView` 的 `padding=@dimen/activity_padding`（16dp）。
   static const double _activityPadding = 16;
 
-  /// 每行 `android:layout_marginTop="8.0dp"`（实测 21px）。
+  /// @brief 每行 `android:layout_marginTop="8.0dp"`（实测 21px）。
   static const double _rowSpacing = 8;
 
-  /// 本页标签列宽：`TableLayout` 第 0 列实测 288px（`42..330`）。
+  /// @brief 本页标签列宽：`TableLayout` 第 0 列实测 288px（`42..330`）。
   static const double _labelColumnWidth = 288 / 2.625;
 
-  /// 端口输入框实测宽 215px（`343..558`），与连接编辑页的 `@id/port_value` 相同。
+  /// @brief 端口输入框实测宽 215px，与连接编辑页的 `@id/port_value` 相同。
   static const double _portFieldWidth = 215 / 2.625;
 
-  /// 复选框行行高：实测 84px，比输入框行（106px）矮。
+  /// @brief 复选框行行高：实测 84px，比输入框行（106px）矮。
   static const double _checkRowHeight = 84 / 2.625;
 
-  /// 本页的一行「标签 + 控件」。
+  /// @brief 本页的一行「标签 + 控件」。
   JuiceFormRow _row({
     required String label,
     required Widget child,
@@ -207,6 +233,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
         child: child,
       );
 
+  /// @brief 回填已有转发的字段（仅编辑时）并读取连接表。
   @override
   void initState() {
     super.initState();
@@ -230,6 +257,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     _load();
   }
 
+  /// @brief 释放四个输入框控制器。
   @override
   void dispose() {
     _name.dispose();
@@ -239,6 +267,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     super.dispose();
   }
 
+  /// @brief 读库载入连接表，供"Connection:"下拉框使用。
   Future<void> _load() async {
     final connections = await _db.connections();
     if (!mounted) return;
@@ -250,7 +279,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
 
   // ------------------------------------------------------------------ 保存 --
 
-  /// 读端口输入框。原版只在文本非空时才写回字段（`n()` 第 507-571 行），
+  /// @brief 读端口输入框。原版只在文本非空时才写回字段（`n()` 第 507-571 行），
   /// 所以空文本要退回 [fallback]。
   int _parsePort(TextEditingController controller, int fallback) {
     final text = controller.text.trim();
@@ -258,7 +287,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     return int.tryParse(text) ?? fallback;
   }
 
-  /// `PortForward.w(Context)` 的等价实现。返回 null 表示校验通过。
+  /// @brief `PortForward.w(Context)` 的等价实现，返回 null 表示校验通过。
   ///
   /// 判定顺序与文案见类注释里的清单。
   String? _validate() {
@@ -281,7 +310,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     return null;
   }
 
-  /// 保存 —— 对应 ActionBar 上的 `menu_item_save`（`@string/save`）。
+  /// @brief 保存 —— 对应 ActionBar 上的 `menu_item_save`（`@string/save`）。
   Future<void> _save() async {
     // 先把 Navigator 取出来：`await` 之后再用 `context` 会触发
     // `use_build_context_synchronously`。
@@ -315,6 +344,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
 
   // ------------------------------------------------------------------ 视图 --
 
+  /// @brief 构建本页的 AppBar 与表单主体。
   @override
   Widget build(BuildContext context) {
     final s = context.s;
@@ -353,6 +383,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     );
   }
 
+  /// @brief 构建滚动表单，按当前模式增删目标主机/端口/浏览器/代理各行。
   Widget _buildForm(BuildContext context) {
     final s = context.s;
 
@@ -526,12 +557,12 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
     );
   }
 
-  /// `Connection.w()`（`models/Connection.smali`）的等价实现：
+  /// @brief `Connection.w()`（`models/Connection.smali`）的等价实现：
   /// 昵称非空取昵称，否则取地址。原版连接下拉框就用它作文本。
   String _connectionDisplayName(Connection connection) =>
       connection.nickname.isNotEmpty ? connection.nickname : connection.address;
 
-  /// 当前下拉框的取值。存的那条连接若已被删除，就退回占位项，
+  /// @brief 下拉框的当前取值；存的那条连接已被删除时退回占位项，
   /// 否则 `DropdownButton` 会因为 value 不在 items 里而断言失败。
   int get _selectedConnectionValue {
     final id = _connectionId;
@@ -541,7 +572,7 @@ class _PortForwardEditorScreenState extends State<PortForwardEditorScreen> {
   }
 }
 
-/// 端口转发模式的文案键。
+/// @brief 端口转发模式的文案键。
 ///
 /// 依据 `com/sonelli/th0.smali`（`ModeSpinnerAdapter`）的 `getView`：
 /// 下标 0 → `@string/local`、1 → `@string/remote`、2 → `@string/dynamic_socks`。
@@ -551,23 +582,30 @@ String modeLabelKey(PortForwardMode mode) => switch (mode) {
       PortForwardMode.dynamic => 'dynamic_socks',
     };
 
-/// 充当 `Spinner` 的紧凑下拉框（原版行高 36dp）。
+/// @brief 充当 `Spinner` 的紧凑下拉框（原版行高 36dp）。
 ///
 /// 与连接编辑页的 `_Dropdown` 同款：不用 `DropdownButtonFormField`，
 /// 因为它会把当前值画成 `InputDecorator` 的浮动标签，与 Spinner 观感差很远；
 /// `DropdownButtonHideUnderline` 去掉 Flutter 自带的下划线（原版 Spinner
 /// 只有右下角一个小三角，没有下划线）。
 class _Dropdown<T> extends StatelessWidget {
+  /// @brief 创建紧凑下拉框。
   const _Dropdown({
     required this.value,
     required this.items,
     required this.onChanged,
   });
 
+  /// @brief 下拉框当前选中的值。
   final T? value;
+
+  /// @brief 下拉框的条目列表。
   final List<DropdownMenuItem<T>> items;
+
+  /// @brief 选中项变化时的回调。
   final ValueChanged<T?> onChanged;
 
+  /// @brief 构建固定 36dp 高、无下划线的紧凑下拉框。
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -597,17 +635,19 @@ class _Dropdown<T> extends StatelessWidget {
   }
 }
 
-/// 端口号的输入限制，对应 `@id/local_port` / `@id/remote_port` 上的
+/// @brief 端口号的输入限制，对应 `@id/local_port` / `@id/remote_port` 上的
 /// `inputType=number` + `maxLength="5"`。
 ///
 /// 原版只靠 `Integer.parseInt` 的 `NumberFormatException` 兜底，
 /// 这里直接以「最多 5 位数字」表达同一件事。
 class _PortFieldFormatter extends TextInputFormatter {
+  /// @brief 创建端口号输入格式化器。
   const _PortFieldFormatter();
 
-  /// `maxLength="5"`。
+  /// @brief 输入长度上限，来自 `maxLength="5"`。
   static const int maxLength = 5;
 
+  /// @brief 过滤掉非数字字符并把长度截到 [`maxLength`]。
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,

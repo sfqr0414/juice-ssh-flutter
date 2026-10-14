@@ -7,23 +7,37 @@ library;
 
 import 'dart:convert';
 
-/// 连接类型。取值依据 `AndroidManifest.xml` 里 TerminalEmulatorActivity
+/// @brief 连接类型，取值为 ssh / telnet / mosh / local；没有 ssh-forward。
+///
+/// 取值依据 `AndroidManifest.xml` 里 TerminalEmulatorActivity
 /// 注册的 scheme：ssh / ssh-forward / telnet / local / mosh。
 enum ConnectionType {
+  /// @brief SSH 连接 —— 默认类型
   ssh('ssh'),
+
+  /// @brief Telnet 连接
   telnet('telnet'),
+
+  /// @brief Mosh 连接（依赖服务端 mosh-server）
   mosh('mosh'),
+
+  /// @brief 本地终端，不建立网络连接
   local('local');
 
+  /// @brief 用枚举值字符串构造，如 `ConnectionType('ssh')`
   const ConnectionType(this.value);
 
+  /// @brief 持久化到数据库 `connection.type` 的字符串
   final String value;
 
+  /// @brief 把数据库里的字符串解析成类型，未知值回落到 ssh
   static ConnectionType fromValue(String? raw) => ConnectionType.values.firstWhere(
         (type) => type.value == raw,
         orElse: () => ConnectionType.ssh,
       );
 
+  /// @brief 对应的 i18n 键名，由界面层翻译成显示名。
+  ///
   /// 对应 `@string/` 里的显示名，交由界面层用 i18n 取。
   String get labelKey => switch (this) {
         ConnectionType.ssh => 'connection_type_ssh',
@@ -33,60 +47,80 @@ enum ConnectionType {
       };
 }
 
-/// 端口转发模式。`PortForward.mode` 字段。
+/// @brief 端口转发模式，对应 `PortForward.mode` 字段。
 enum PortForwardMode {
-  /// 本地转发（-L）
+  /// @brief 本地转发（-L）
   local(0),
 
-  /// 远程转发（-R）
+  /// @brief 远程转发（-R）
   remote(1),
 
-  /// 动态转发 / SOCKS 代理（-D）
+  /// @brief 动态转发 / SOCKS 代理（-D）
   dynamic(2);
 
+  /// @brief 用枚举值整数构造
   const PortForwardMode(this.value);
 
+  /// @brief 持久化到数据库 `portforward.mode` 的整数
   final int value;
 
+  /// @brief 把数据库里的整数解析成模式，未知值回落到 local
   static PortForwardMode fromValue(int? raw) => PortForwardMode.values.firstWhere(
         (mode) => mode.value == raw,
         orElse: () => PortForwardMode.local,
       );
 }
 
-/// 终端里退格键发送的字节。`Connection.backspaceMode`。
+/// @brief 终端里退格键发送的字节，对应 `Connection.backspaceMode`。
 enum BackspaceMode {
-  /// 发送 DEL (0x7F) —— 原版默认
+  /// @brief 发送 DEL (0x7F) —— 原版默认
   del(0, 'backspace_mode_del'),
 
-  /// 发送 BS (0x08)
+  /// @brief 发送 BS (0x08)
   backspace(1, 'backspace_mode_backspace');
 
+  /// @brief 用整数值与 i18n 标签键构造
   const BackspaceMode(this.value, this.labelKey);
 
+  /// @brief 持久化到数据库 `connection.backspaceMode` 的整数
   final int value;
+
+  /// @brief 对应的 i18n 标签键名
   final String labelKey;
 
+  /// @brief 把数据库里的整数解析成模式，未知值回落到 del
   static BackspaceMode fromValue(int? raw) => BackspaceMode.values.firstWhere(
         (mode) => mode.value == raw,
         orElse: () => BackspaceMode.del,
       );
 }
 
-/// 所有实体共有的同步元数据字段（原版的 BaseModel）。
+/// @brief 所有实体共有的同步元数据字段（原版的 BaseModel）。
 mixin SyncMetadata {
+  /// @brief 主键
   int get id;
+
+  /// @brief 最后修改时间戳（毫秒），云同步冲突判定用
   int? get modified;
+
+  /// @brief 加密后的载荷，解密后才是明文
   String? get encrypted;
+
+  /// @brief 该行是否加密存储
   bool get isEncrypted;
+
+  /// @brief 所属用户的云同步 id
   int? get owner;
+
+  /// @brief 最后修改该行的用户 id
   int? get lastUpdatedBy;
 }
 
-/// `connection` 表。
+/// @brief `connection` 表 —— 一条保存好的连接配置。
 ///
 /// 注意 `via` 是指向本表的自引用外键，表示"经由某台跳板机连接"。
 class Connection with SyncMetadata {
+  /// @brief 构造一条连接，默认 id 为 0、端口 22、类型 ssh。
   const Connection({
     this.id = 0,
     required this.nickname,
@@ -106,50 +140,57 @@ class Connection with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
 
-  /// `nickname` —— 显示名
+  /// @brief `nickname` —— 显示名
   final String nickname;
 
-  /// `address` —— 主机名或 IP
+  /// @brief `address` —— 主机名或 IP
   final String address;
 
-  /// `port`
+  /// @brief `port`
   final int port;
 
-  /// `type` —— ssh / telnet / mosh / local
+  /// @brief `type` —— ssh / telnet / mosh / local
   final ConnectionType type;
 
-  /// `group` —— 外键，指向 connectiongroup
+  /// @brief `group` —— 外键，指向 connectiongroup
   final int? groupId;
 
-  /// `via` —— 外键，指向另一条 connection（跳板机）
+  /// @brief `via` —— 外键，指向另一条 connection（跳板机）
   final int? viaId;
 
-  /// `snippet` —— 外键，连接成功后自动执行
+  /// @brief `snippet` —— 外键，连接成功后自动执行
   final int? snippetId;
 
-  /// `mosh_command` —— 列名映射为 mosh_command
+  /// @brief `mosh_command` —— 列名映射为 mosh_command
   final String? moshCommand;
 
-  /// `backspaceMode`
+  /// @brief `backspaceMode`
   final BackspaceMode backspaceMode;
 
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
 
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
 
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
 
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
 
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 复制一份并按传入参数覆盖字段，`clearXxx` 用于显式置空外键。
   Connection copyWith({
     int? id,
     String? nickname,
@@ -184,6 +225,7 @@ class Connection with SyncMetadata {
         lastUpdatedBy: lastUpdatedBy,
       );
 
+  /// @brief 转成 `connection` 表的列名 → 值映射（id 为 0 时不写该列）。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'nickname': nickname,
@@ -202,6 +244,7 @@ class Connection with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `connection` 表的一行还原对象，缺失字段回落到默认值。
   static Connection fromMap(Map<String, Object?> map) => Connection(
         id: (map['id'] as num?)?.toInt() ?? 0,
         nickname: '${map['nickname'] ?? ''}',
@@ -221,10 +264,11 @@ class Connection with SyncMetadata {
       );
 }
 
-/// `connectiongroup` 表。
+/// @brief `connectiongroup` 表，连接分组。
 ///
 /// 原版**没有标签（tag）功能**，分组是唯一的归类方式。
 class ConnectionGroup with SyncMetadata {
+  /// @brief 构造一个连接分组，默认 id 为 0。
   const ConnectionGroup({
     this.id = 0,
     required this.name,
@@ -236,25 +280,40 @@ class ConnectionGroup with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
+
+  /// @brief `name` —— 分组名
   final String name;
+
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 复制一份并按传入参数覆盖字段。
   ConnectionGroup copyWith({int? id, String? name, int? modified}) => ConnectionGroup(
         id: id ?? this.id,
         name: name ?? this.name,
         modified: modified ?? this.modified,
       );
 
+  /// @brief 转成 `connectiongroup` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'name': name,
@@ -265,6 +324,7 @@ class ConnectionGroup with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `connectiongroup` 表的一行还原对象。
   static ConnectionGroup fromMap(Map<String, Object?> map) => ConnectionGroup(
         id: (map['id'] as num?)?.toInt() ?? 0,
         name: '${map['name'] ?? ''}',
@@ -276,8 +336,9 @@ class ConnectionGroup with SyncMetadata {
       );
 }
 
-/// `identity` 表 —— 一套登录凭据（用户名 + 密码或私钥）。
+/// @brief `identity` 表 —— 一套登录凭据（用户名 + 密码或私钥）。
 class Identity with SyncMetadata {
+  /// @brief 构造一套身份凭据，默认无密码与私钥。
   const Identity({
     this.id = 0,
     required this.nickname,
@@ -296,44 +357,60 @@ class Identity with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
 
-  /// `nickname`
+  /// @brief `nickname`
   final String nickname;
 
-  /// `username`
+  /// @brief `username`
   final String? username;
 
-  /// `password`
+  /// @brief `password`
   final String? password;
 
-  /// `privatekey` —— PEM / OpenSSH 私钥文本
+  /// @brief `privatekey` —— PEM / OpenSSH 私钥文本
   final String? privateKey;
 
-  /// `privatekeyPassword` —— 私钥口令
+  /// @brief `privatekeyPassword` —— 私钥口令
   final String? privateKeyPassword;
 
-  /// `passUpdated` / `keyUpdated` —— 时间戳，用于云同步冲突判定
+  /// @brief `passUpdated` —— 密码最后修改时间戳，用于云同步冲突判定
   final int? passUpdated;
+
+  /// @brief `keyUpdated` —— 私钥最后修改时间戳，用于云同步冲突判定
   final int? keyUpdated;
 
-  /// `snippet` —— 登录成功后自动执行
+  /// @brief `snippet` —— 登录成功后自动执行
   final int? snippetId;
 
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 是否配置了私钥（按去空白后非空判断）。
   bool get hasPrivateKey => (privateKey ?? '').trim().isNotEmpty;
+
+  /// @brief 是否配置了密码。
   bool get hasPassword => (password ?? '').isNotEmpty;
 
+  /// @brief 复制一份并按传入参数覆盖字段，`clearXxx` 用于显式置空凭据。
   Identity copyWith({
     int? id,
     String? nickname,
@@ -369,6 +446,7 @@ class Identity with SyncMetadata {
         lastUpdatedBy: lastUpdatedBy,
       );
 
+  /// @brief 转成 `identity` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'nickname': nickname,
@@ -386,6 +464,7 @@ class Identity with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `identity` 表的一行还原对象。
   static Identity fromMap(Map<String, Object?> map) => Identity(
         id: (map['id'] as num?)?.toInt() ?? 0,
         nickname: '${map['nickname'] ?? ''}',
@@ -404,11 +483,12 @@ class Identity with SyncMetadata {
       );
 }
 
-/// `connectionidentity` 表 —— 连接与身份的多对多关联。
+/// @brief `connectionidentity` 表 —— 连接与身份的多对多关联。
 ///
 /// 这是原版一个容易被忽略的能力：一条连接可以挂多个身份，
 /// 登录时按顺序逐个尝试，直到某个身份通过认证。
 class ConnectionIdentity with SyncMetadata {
+  /// @brief 构造一条连接与身份的关联记录。
   const ConnectionIdentity({
     this.id = 0,
     required this.connectionId,
@@ -421,20 +501,36 @@ class ConnectionIdentity with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
+
+  /// @brief `connection` —— 外键，指向 connection
   final int connectionId;
+
+  /// @brief `identity` —— 外键，指向 identity
   final int identityId;
+
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 转成 `connectionidentity` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'connection': connectionId,
@@ -446,6 +542,7 @@ class ConnectionIdentity with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `connectionidentity` 表的一行还原对象。
   static ConnectionIdentity fromMap(Map<String, Object?> map) => ConnectionIdentity(
         id: (map['id'] as num?)?.toInt() ?? 0,
         connectionId: (map['connection'] as num?)?.toInt() ?? 0,
@@ -454,8 +551,9 @@ class ConnectionIdentity with SyncMetadata {
       );
 }
 
-/// `snippet` 表 —— 一段可复用的命令，可在连接建立后自动执行。
+/// @brief `snippet` 表 —— 一段可复用的命令，可在连接建立后自动执行。
 class Snippet with SyncMetadata {
+  /// @brief 构造一个片段，默认 id 为 0、使用次数 0。
   const Snippet({
     this.id = 0,
     required this.name,
@@ -469,24 +567,39 @@ class Snippet with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
+
+  /// @brief `name` —— 片段名
   final String name;
+
+  /// @brief `content` —— 要执行的命令文本
   final String content;
 
-  /// `count` —— 使用次数，用于"常用"排序
+  /// @brief `count` —— 使用次数，用于"常用"排序
   final int count;
 
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 复制一份并按传入参数覆盖字段。
   Snippet copyWith({int? id, String? name, String? content, int? count, int? modified}) => Snippet(
         id: id ?? this.id,
         name: name ?? this.name,
@@ -495,6 +608,7 @@ class Snippet with SyncMetadata {
         modified: modified ?? this.modified,
       );
 
+  /// @brief 转成 `snippet` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'name': name,
@@ -507,6 +621,7 @@ class Snippet with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `snippet` 表的一行还原对象。
   static Snippet fromMap(Map<String, Object?> map) => Snippet(
         id: (map['id'] as num?)?.toInt() ?? 0,
         name: '${map['name'] ?? ''}',
@@ -516,8 +631,9 @@ class Snippet with SyncMetadata {
       );
 }
 
-/// `portforward` 表。
+/// @brief `portforward` 表 —— 端口转发规则。
 class PortForward with SyncMetadata {
+  /// @brief 构造一条端口转发规则，默认两个开关都关闭。
   const PortForward({
     this.id = 0,
     required this.name,
@@ -536,22 +652,31 @@ class PortForward with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
+
+  /// @brief `name` —— 转发规则名
   final String name;
+
+  /// @brief `mode` —— 本地 / 远程 / 动态
   final PortForwardMode mode;
 
-  /// `connection` —— 外键，指向承载该转发的连接
+  /// @brief `connection` —— 外键，指向承载该转发的连接
   final int? connectionId;
 
-  /// `host` —— 目标主机（本地/远程转发的目标地址）
+  /// @brief `host` —— 目标主机（本地/远程转发的目标地址）
   final String? host;
+
+  /// @brief `localPort` —— 本地端口
   final int? localPort;
+
+  /// @brief `remotePort` —— 远程端口
   final int? remotePort;
 
-  /// `openInBrowser` —— 建立后自动打开浏览器
+  /// @brief `openInBrowser` —— 建立后自动打开浏览器
   final bool openInBrowser;
 
-  /// `useAsProxy` —— 编辑器里那个复选框。
+  /// @brief `useAsProxy` —— 编辑器里那个复选框。
   ///
   /// 注意：原版 3.2.2 里这个字段**只存不用** —— 全 smali 树里除了
   /// `ManagePortForwardActivity`（读写复选框）和模型本身，没有任何运行时引用；
@@ -560,16 +685,26 @@ class PortForward with SyncMetadata {
   final bool useAsProxy;
 
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 复制一份并按传入参数覆盖字段，`clearConnection` 用于解绑连接。
   PortForward copyWith({
     int? id,
     String? name,
@@ -596,6 +731,7 @@ class PortForward with SyncMetadata {
         modified: modified ?? this.modified,
       );
 
+  /// @brief 转成 `portforward` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'name': name,
@@ -613,6 +749,7 @@ class PortForward with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `portforward` 表的一行还原对象。
   static PortForward fromMap(Map<String, Object?> map) => PortForward(
         id: (map['id'] as num?)?.toInt() ?? 0,
         name: '${map['name'] ?? ''}',
@@ -627,8 +764,9 @@ class PortForward with SyncMetadata {
       );
 }
 
-/// `host` 表 —— 已知主机（known hosts）。表名就叫 host。
+/// @brief `host` 表 —— 已知主机（known hosts）。表名就叫 host。
 class KnownHost with SyncMetadata {
+  /// @brief 构造一条已知主机记录，默认 id 为 0。
   const KnownHost({
     this.id = 0,
     required this.hostname,
@@ -643,31 +781,42 @@ class KnownHost with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
 
-  /// `hostname`
+  /// @brief `hostname`
   final String hostname;
 
-  /// `key` —— 服务端公钥
+  /// @brief `key` —— 服务端公钥
   final String key;
 
-  /// `type` —— 密钥算法，例如 ssh-rsa / ssh-ed25519
+  /// @brief `type` —— 密钥算法，例如 ssh-rsa / ssh-ed25519
   final String type;
 
-  /// `fingerprint`
+  /// @brief `fingerprint`
   final String? fingerprint;
 
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 转成 `host` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'hostname': hostname,
@@ -681,6 +830,7 @@ class KnownHost with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `host` 表的一行还原对象。
   static KnownHost fromMap(Map<String, Object?> map) => KnownHost(
         id: (map['id'] as num?)?.toInt() ?? 0,
         hostname: '${map['hostname'] ?? ''}',
@@ -691,8 +841,11 @@ class KnownHost with SyncMetadata {
       );
 }
 
-/// `connectioncounter` 表 —— 每条连接的使用次数，供"常用连接"与排序使用。
+/// @brief `connectioncounter` 表 —— 每条连接的使用次数。
+///
+/// 供"常用连接"与按使用频率排序使用。
 class ConnectionCounter with SyncMetadata {
+  /// @brief 构造一条连接使用计数，默认 id 为 0、次数 0。
   const ConnectionCounter({
     this.id = 0,
     required this.connectionId,
@@ -705,20 +858,36 @@ class ConnectionCounter with SyncMetadata {
   });
 
   @override
+  /// @brief 主键，0 表示尚未写库
   final int id;
+
+  /// @brief `connection` —— 外键，指向 connection
   final int connectionId;
+
+  /// @brief `count` —— 累计连接次数
   final int count;
+
   @override
+  /// @brief 最后修改时间戳（毫秒）
   final int? modified;
+
   @override
+  /// @brief 加密载荷，解密后是明文
   final String? encrypted;
+
   @override
+  /// @brief 该行是否加密存储
   final bool isEncrypted;
+
   @override
+  /// @brief 所属用户的云同步 id
   final int? owner;
+
   @override
+  /// @brief 最后修改该行的用户 id
   final int? lastUpdatedBy;
 
+  /// @brief 转成 `connectioncounter` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         if (id != 0) 'id': id,
         'connection': connectionId,
@@ -730,6 +899,7 @@ class ConnectionCounter with SyncMetadata {
         'lastUpdatedBy': lastUpdatedBy,
       };
 
+  /// @brief 从 `connectioncounter` 表的一行还原对象。
   static ConnectionCounter fromMap(Map<String, Object?> map) => ConnectionCounter(
         id: (map['id'] as num?)?.toInt() ?? 0,
         connectionId: (map['connection'] as num?)?.toInt() ?? 0,
@@ -738,16 +908,23 @@ class ConnectionCounter with SyncMetadata {
       );
 }
 
+/// @brief `connectiongroupmembership` 的行 —— 连接与分组的多对多关联。
+///
 /// 把 `ConnectionGroupMembership` 简化为一个 (connection, group) 值对象。
 class ConnectionGroupMembership {
+  /// @brief 用连接 id 与分组 id 构造
   const ConnectionGroupMembership({
     required this.connectionId,
     required this.groupId,
   });
 
+  /// @brief `connection` —— 外键，指向 connection
   final int connectionId;
+
+  /// @brief `group` —— 外键，指向 connectiongroup
   final int groupId;
 
+  /// @brief 从 `connectiongroupmembership` 表的一行还原值对象。
   static ConnectionGroupMembership fromMap(Map<String, Object?> map) =>
       ConnectionGroupMembership(
         connectionId: (map['connection'] as num?)?.toInt() ?? 0,
@@ -755,42 +932,58 @@ class ConnectionGroupMembership {
       );
 }
 
-/// 连接的身份关联，带一个显示顺序（原版用插入顺序表示尝试顺序）。
+/// @brief 连接与身份的关联，带一个显示顺序。
+///
+/// 原版用插入顺序表示尝试顺序。
 class ConnectionIdentityLink {
+  /// @brief 用连接 id、身份 id 与顺序构造
   const ConnectionIdentityLink({
     required this.connectionId,
     required this.identityId,
     this.position = 0,
   });
 
+  /// @brief `connection` —— 外键，指向 connection
   final int connectionId;
+
+  /// @brief `identity` —— 外键，指向 identity
   final int identityId;
+
+  /// @brief 认证尝试顺序，从 0 开始
   final int position;
 }
 
-/// settings 的存储模型。
+/// @brief 一条设置项 —— 键名 + 值 + 是否加密。
 ///
 /// 原版把设置规范化成 `configfield` + `configvalue` 两张表，目的是给单个字段
 /// 加"是否加密"以及云同步元数据。本地复刻不需要这层间接，
 /// 因此这里用一张 `config(key, value, isEncrypted)` 直接存储，
 /// 键名与原版完全一致（如 `terminal:theme`、`pinlock:enabled`）。
 class ConfigEntry {
+  /// @brief 用键名、值与加密标记构造
   const ConfigEntry({
     required this.key,
     required this.value,
     this.isEncrypted = false,
   });
 
+  /// @brief 设置键名，与原版 `configfield.name` 一致
   final String key;
+
+  /// @brief 设置值，null 表示未设置
   final String? value;
+
+  /// @brief 该值是否加密存储
   final bool isEncrypted;
 
+  /// @brief 从 `config` 表的一行还原设置项。
   static ConfigEntry fromMap(Map<String, Object?> map) => ConfigEntry(
         key: '${map['key'] ?? ''}',
         value: map['value'] as String?,
         isEncrypted: ((map['isEncrypted'] as num?)?.toInt() ?? 0) == 1,
       );
 
+  /// @brief 转成 `config` 表的列名 → 值映射。
   Map<String, Object?> toMap() => {
         'key': key,
         'value': value,
@@ -798,5 +991,5 @@ class ConfigEntry {
       };
 }
 
-/// 便于调试：把 map 里的值转成可读字符串。
+/// @brief 便于调试：把 map 里的值转成可读字符串。
 String describeMap(Map<String, Object?> map) => json.encode(map);
