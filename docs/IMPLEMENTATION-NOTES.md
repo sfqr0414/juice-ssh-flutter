@@ -10049,3 +10049,78 @@ interactiveProgram = true → ScrollConfiguration(dragDevices: {}) → 手指滑
 - 备用屏禁滑语义**未被削弱**：判定条件只从"含鼠标模式"收窄为"仅备用屏切换"，
   驱动与 `dragDevices` 仍挂在同一个 `interactiveProgram` 标志上。
 
+---
+
+## 第 346+ 轮：滑屏滚动的最终判据（照抄原版），并更正前文三处
+
+**本节推翻第 345+ 轮的结论。** 那一轮把"普通模式滑不动"归因于鼠标上报模式
+（`?1000h/1002h/1003h`）被算成交互态，于是把判定收窄为"只认备用屏切换" —— 方向错了：
+**鼠标上报模式恰恰就是原版的判据**。收窄后真机表现为"普通模式正常、备用屏不可滑"（用户实测），
+但**只开鼠标上报、不进备用屏**的程序（`nano`/`mc` 这类）仍能滑，与原版不符，用户再次报告。
+
+### 原版怎么判定的（`reference/JuiceSSH.apk` → `dexdump -d`，dex 偏移 3fa788 / 3fa494）
+
+```java
+// jackpal EmulatorView.onScroll(MotionEvent e1, MotionEvent e2, float dX, float dY)
+if (mExtGestureListener != null && mExtGestureListener.onScroll(...)) return true;
+float acc = dY + mScrollRemainder;
+int n = (int) (acc / mCharacterHeight);          // 值向零截断，同 Java float→int
+mScrollRemainder = acc - n * mCharacterHeight;
+if (isMouseTrackingActive()) {                   // = TerminalEmulator.getMouseTrackingMode() != off
+    while (n > 0) sendMouseEventCode(e1, 65);    // 上划 → 滚轮下（button 5）
+    while (n < 0) sendMouseEventCode(e1, 64);    // 下划 → 滚轮上（button 4）
+    return true;                                 // ★ 不回滚缓冲
+}
+mTopRow = Math.min(0, Math.max(-getActiveTranscriptRows(), mTopRow + n));  // 普通模式才滚
+invalidate(); return true;
+
+// EmulatorView.onFling(...)
+if (mExtGestureListener != null && mExtGestureListener.onFling(...)) return true;
+if (isMouseTrackingActive()) mMouseTrackingFlingRunner.fling(...);         // 鼠标模式：转鼠标事件
+else mScroller.fling(0, mTopRow, 0, (int) velocityY, 0, 0, 0, getActiveTranscriptRows());
+view.post(mFlingRunner);                                                    // ★ 惯性来源
+```
+
+`sendMouseEventCode` 用 X10 编码 `ESC [ M <code+32> <col+32> <row+32>`，列/行取自 MotionEvent 的
+**屏幕坐标**；另有 `onTouchEventWhileSelectingText` 说明选字走另一分支。三条结论：
+
+1. "交互模式"判据 = **鼠标上报模式**（DECSET 1000/1002/1003），**不是**备用屏；
+2. 鼠标模式下原版**不是单纯禁滑**，而是把滑动转成**滚轮事件**发给远端（htop 因此滚自己的视图）；
+3. 普通模式的顺滑来自 `Scroller.fling(...)` 的**惯性**，不是逐帧 `jumpTo`。
+
+### xterm 侧的对应状态
+
+- `Terminal.mouseMode`（`xterm-4.0.0/lib/src/terminal.dart:182`，
+  `MouseMode.{none,clickOnly,upDownScroll,upDownScrollDrag,upDownScrollMove}`）↔ 原版
+  `getMouseTrackingMode()`；`Terminal.isUsingAltBuffer`（`terminal.dart:214`）↔ 备用屏。
+- 两者都是**实时状态**：不必自己解析序列、不会误判或滞留。
+
+### 最终实现
+
+- **禁滑**：只包住 `TerminalView` 的一层
+  `ScrollConfiguration.copyWith(dragDevices: (mouseMode != none || isUsingAltBuffer) ? {} : null)`；
+  重建由 `Listenable.merge([interactiveProgram, outputTick])` 驱动，`outputTick` 在每次终端输出后
+  自增 → 模式切换序列一写完就重算，**配置不会过期**（"进了 htop 仍然能滑"正是配置过期）。
+- **滚轮转发**：`_onTerminalPointerMove` 里照上面的原版算法累积 `_wheelRemainder`，每满一个
+  单元格高度发一个 `ESC[M`。两处易错：**Android 的 `distanceY` 与 Flutter 的 `delta.dy` 符号相反**
+  （前者 = 上次焦点 y − 本次 y），故取负后再截断；列/行必须用**可视单元格**，不能用
+  `_cellAt` 返回的缓冲区绝对行号。
+- **删掉 `jumpTo` 驱动**：它逐帧硬设位置，会打断 `Scrollable` 的拖动活动（甩动惯性失效）并与
+  原生拖动互相打架 —— 用户实测表现就是"不顺畅、不能一滑滚多远"。主屏触摸滚动交回内部 `Scrollable`。
+
+### 有效性分级（不要把没跑通的当证据）
+
+- **真机确认**（用户实测）：普通模式滑动正常且有惯性；备用屏/交互模式下不可滑动。
+- **夹具确认**：服务器真发 `\x1b[?1049h`（`--alt-screen`，主屏先由 `--many-lines` 写满 60 行，
+  `max=679.9` 确有回滚余量）时，真实拖动后 `离底距离 0.0 → 0.0`，`All tests passed!`。
+- **未验证**：滚轮转发的方向与字节。夹具连续两次在**会话阶段**即失败（服务器
+  `口令认证 -> 成功`，但 `_session_loop` 的横幅都没发出，App 报"连接超时"；疑与
+  `JuiceSshHandler: 等待 5 秒后回调已挂=true` 吃掉连接超时窗口有关）。设备侧自验办法：
+  `printf '\033[?1002h'; cat -v` 后滑动，屏幕应出现 `^[[M` + 3 字符，且回滚缓冲不动。
+- **量具教训（更正第 345+ 轮第 2、4 条）**：那条"像素比对证明普通模式滑动可用"**不成立** ——
+  当时教程覆盖层（半透明 `ColoredBox`，整屏吸收指针）盖在终端上，`adb` 滑动带来的 20% 像素变化
+  来自**教程层自己的 `SingleChildScrollView`**，不是终端滚动；也解释了那批"探针 0 次"。
+  集成测试现已在种数据阶段直接写入"教程已看"
+  （`SettingsController.instance.setTerminalTutorialSeen(true)`）绕开该覆盖层，探针从此能看到真实指针事件。
+- 测试服务器新增 `--mouse-tracking`（发 `?1002h`），用于日后核验滚轮转发。
+
