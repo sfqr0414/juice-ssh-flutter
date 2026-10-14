@@ -60,7 +60,15 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        createNotificationChannel()
+        // **不要在这里建通知渠道**（第 350 轮）。
+        //
+        // 本应用 targetSdk=29（与原版 3.2.2 对齐，见 build.gradle.kts 的注释）。Android 13+
+        // 对 targetSdk<33 的应用，**创建首个通知渠道的那一刻**系统会自动弹出通知授权框。
+        // 放在启动路径上，就意味着每次冷启动都糊一个系统弹窗：它抢焦点、盖住触摸注入，
+        // 集成测试里表现为"测试刚开始就有一个没人认领的窗口"。
+        //
+        // 所以渠道一律**按需**创建，就在本页真正要发通知之前（见 showNotification 与
+        // showBell），授权也在同一刻请求 —— 与原版"用到通知时才打扰用户"一致。
 
         keyChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -229,6 +237,8 @@ class MainActivity : FlutterActivity() {
     private val bellNotificationId = 9001
 
     private fun showBell(title: String, text: String) {
+        // 按需建渠道 + 请求授权（原因见 configureFlutterEngine 里的注释）。
+        requestNotificationPermission()
         createNotificationChannel(
             bellChannelId,
             "Terminal bell",
@@ -273,6 +283,9 @@ class MainActivity : FlutterActivity() {
         url: String?,
         disconnectLabel: String,
     ) {
+        // 按需建渠道 + 请求授权（原因见 configureFlutterEngine 里的注释）。
+        createNotificationChannel()
+        requestNotificationPermission()
         // 点开通知的去向由 `PortForward.openInBrowser` 决定（原版 `gi0.smali`）。
         val contentIntent = if (url != null) {
             PendingIntent.getActivity(

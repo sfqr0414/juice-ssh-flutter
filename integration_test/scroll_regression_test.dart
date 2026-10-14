@@ -1,3 +1,9 @@
+// ignore_for_file: avoid_print
+//
+// 本文件是**集成测试**：它的 `print`/`debugPrint` 就是给人也给脚本看的运行日志
+// （外部要靠"注入窗口开始"这类标记来决定何时 `adb shell input swipe`），不是生产代码的
+// 输出，所以整文件豁免 `avoid_print`。
+//
 // 普通模式"能否滑屏滚动"的回归验证（第 348 轮加入，第 351-357 轮持续加固）。
 //
 // 背景：用户报告"普通模式下不能滑屏滚动了"（此前几轮为了让 htop/vim 这类交互式命令
@@ -381,7 +387,8 @@ void main() {
     if (st == null) {
       fail('终端没有可滚历史（检查探测服务器是否带 --many-lines）');
     }
-    final before = st!.position.pixels;
+    // 上面 `fail(...)` 返回 `Never`，这里 `st` 已被提升为非空，不需要 `!`。
+    final before = st.position.pixels;
     final max = st.position.maxScrollExtent;
 
     // 手指上滑 = 看历史。**分帧读取**：如果是"先移动、随后被拉回底部"，

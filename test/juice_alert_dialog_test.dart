@@ -12,12 +12,21 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:juice_ssh_flutter/app/juice_colors.dart';
+import 'package:juice_ssh_flutter/app/juice_theme.dart';
 import 'package:juice_ssh_flutter/widgets/juice_alert_dialog.dart';
 
 void main() {
   testWidgets('showDialog 弹出 JuiceAlertDialog 不应抛异常且能返回', (tester) async {
+    // **必须套 `JuicePaletteScope`**（第 350 轮修）：`JuiceAlertDialog` 通过
+    // `JuiceDialogColors.of` → `context.palette` 取调色板，而 `JuicePaletteScope.of`
+    // 有 `assert(scope != null, 'JuicePaletteScope 未挂载：请检查 app.dart 的根 widget')`。
+    // 这个用例写于该依赖引入之前，只套了裸 `MaterialApp`，于是弹窗一 build 就抛断言、
+    // 控件树里没有 SelectableText —— 看起来像"弹窗构建失败"，其实是**测试缺了根 widget**。
     await tester.pumpWidget(
-      MaterialApp(
+      JuicePaletteScope(
+        palette: JuicePalette.dark,
+        child: MaterialApp(
         home: Scaffold(
           body: Builder(
             builder: (context) => Center(
@@ -48,6 +57,7 @@ void main() {
             ),
           ),
         ),
+        ),
       ),
     );
 
@@ -59,7 +69,9 @@ void main() {
         reason: '弹窗构建失败时它不会出现在控件树里');
     expect(tester.takeException(), isNull, reason: '构建弹窗不应产生框架异常');
 
-    await tester.tap(find.text('accept'));
+    // 按钮文案是**大写**：`JuiceDialogAction` 内部走 `label.toUpperCase()`
+    // （juice_alert_dialog.dart:384），与原版 Android 对话框的按钮一致。
+    await tester.tap(find.text('ACCEPT'));
     await tester.pumpAndSettle();
     expect(find.byType(SelectableText), findsNothing, reason: '点接受后弹窗应关闭');
   });
