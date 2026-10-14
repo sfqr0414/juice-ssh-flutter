@@ -1,5 +1,8 @@
 # 滚轮转发与夹具验证记录（第 348–349 轮）
 
+> 追加：末尾两节记录"通知授权窗口为什么老在启动时弹"与"`juice_alert_dialog_test` 为什么红"
+> 的查清过程与修法，以及 `flutter analyze` / `flutter test` 的最终状态。
+
 本文记录三件事：**集成夹具为什么会"认证成功却报连接超时"**、**滚轮转发如何拿到端到端硬证据**、
 以及**两种夹具服务端的取舍**。所有结论都附命令与原始输出，可复现。
 
@@ -108,3 +111,44 @@ python tools/_sshd.py 2222 --many-lines --mouse-tracking
 flutter test integration_test/scroll_regression_test.dart -d emulator-5554 --dart-define=ALT_SCREEN=true
 # 期望：夹具日志出现 hex=1b5b4d6…，且测试断言"不滚动"通过
 ```
+
+## 6. 追加：通知授权窗口为什么老在启动时弹
+
+`android/app/build.gradle.kts` 里 `targetSdk = 29`（与原版 3.2.2 对齐）。这在 Android 13+
+上有个副作用：**应用创建首个通知渠道的那一刻，系统会自动弹出通知授权框**。而渠道原本在
+`MainActivity.configureFlutterEngine` 里创建 —— 也就是每次冷启动都会弹一个系统窗口：它抢
+焦点、盖住集成测试的 `adb shell input swipe`，表现成"测试刚跑起来就有一个没人认领的窗口"。
+
+修法：渠道**按需**创建，就在真正要发通知之前（`showNotification` / `showBell`），授权也在
+同一刻请求（`requestNotificationPermission()`）—— 与原版"用到通知时才打扰用户"一致。
+
+对照采样（同一台模拟器 Android 16、同一权限状态，`dumpsys notification --noredact` 取本应用段）：
+
+```
+修复前：冷启动 4 秒 → 已有 NotificationChannel{mId='port_forwards', …}
+修复后：冷启动 4 秒 → 无 port_forwards / terminal_bell，且全程无 GrantPermissionsActivity
+```
+
+> 注意：在权限决定已经存在的旧安装上，系统不会重复弹框，因此这里用**通知渠道是否已创建**
+> 作为判据 —— 它才是系统弹框的触发条件，比"有没有看见弹窗"可复现得多。
+
+## 7. 追加：`juice_alert_dialog_test` 为什么红
+
+```
+The following assertion was thrown building JuiceAlertDialog(dirty):
+JuicePaletteScope 未挂载：请检查 app.dart 的根 widget
+  #2 JuicePaletteScope.of (juice_theme.dart:249  'scope != null')
+  #4 new JuiceDialogColors.of (juice_alert_dialog.dart:162)
+  #5 JuiceAlertDialog.build (juice_alert_dialog.dart:250)
+```
+
+两处都是**测试跟不上实现**，控件本身没有缺陷：
+
+1. `JuiceAlertDialog` 现在经 `JuiceDialogColors.of` → `context.palette` 取调色板，必须挂在
+   `JuicePaletteScope` 之下；用例写在该依赖引入之前，只套了裸 `MaterialApp`，于是弹窗一
+   build 就命中断言、控件树里没有 `SelectableText` —— 表象像"构建失败"，实为缺根 widget。
+2. 按钮文案走 `label.toUpperCase()`（对齐原版 Android 对话框），用例却在点小写 `'accept'`。
+
+最终状态：`flutter analyze` 全量 **No issues found**；`flutter test` **22/22 通过**
+（此前 20 通过 + 2 失败：本用例与需要外部夹具的探针用例；后者现在无夹具时自动跳过）。
+
