@@ -301,6 +301,22 @@ void main() {
       print('SCROLL 点掉教程层第 ${guard + 1} 次，剩余=${tip.evaluate().length}');
     }
 
+    // **先处理连接期的弹窗，再开注入窗口**（第 348 轮定位）。
+    //
+    // 主机密钥确认框必须有人点，而 App 的 `authenticated` 有 30 秒超时；上一版是
+    // "先开 30 秒注入窗口、窗口结束后才去点弹窗"，于是裁决必然落在超时之后 ——
+    // 界面上表现为"服务端日志显示认证成功，客户端却报连接超时"，并且时好时坏
+    // （取决于弹窗与超时谁先到）。所以这里先把弹窗点掉、等到主屏真的有历史，
+    // 再去注入触摸；否则注入期打的滑动全是打在一个"连接失败"页上。
+    ScrollableState? ready;
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 500));
+      await dismissDialogs(tester);
+      ready = terminalScrollable(tester, '连接期#$i');
+      if (ready != null) break;
+    }
+    debugPrint('SCROLL 连接期就绪 = ${ready != null}（主机密钥弹窗已被处理）');
+
     // 注入窗口：给宿主留出时间用 `adb shell input swipe` 注入**真实触摸**。
     // 夹具手势到不了页面 `Listener`（第 51-56 轮反复证实），所以触摸滑动的判定
     // 只能靠系统级注入；这里只推进帧、不做任何交互。
@@ -463,17 +479,25 @@ void main() {
     // 有效断言：主屏有回滚余量（maxScrollExtent>0），不是空洞通过。
     const altScreen = bool.fromEnvironment('ALT_SCREEN');
     final beforeFromBottom = maxT - beforeT;
-    final afterFromBottom =
-        terminalState.position.maxScrollExtent - terminalState.position.pixels;
+    final afterFromBottom = maxT - terminalState.position.pixels;
+    // **判据用"离底距离的峰值"，不用终值**（第 349 轮修正）。
+    //
+    // 本段在上面按"上滑看历史 → 下滑回底部"各拖一次，终值必然回到贴底，于是
+    // "普通模式应产生滚动"这条断言自我抵消、永远为红：实测 `上滑` 时 px 从
+    // 384.5 掉到 164.5（有变化=true），可终值又被 `下滑` 拉回 384.5。
+    // 这与第 46/47 轮的假阳性是同一枚硬币的两面 —— 那时读终值骗过了一次，
+    // 现在读终值又冤枉了一次；过程峰值才是"有没有滚起来"的唯一可信判据。
+    final peakUp = afterUp < beforeT ? afterUp : beforeT;
+    final peakFromBottom = maxT - peakUp;
     debugPrint('SCROLL 离底距离(${altScreen ? "备用屏" : "普通模式"}): '
-        '$beforeFromBottom → $afterFromBottom '
-        '(max=${terminalState.position.maxScrollExtent.toStringAsFixed(1)})');
+        '$beforeFromBottom → $afterFromBottom，峰值=$peakFromBottom '
+        '(max=${maxT.toStringAsFixed(1)}，上滑后=$afterUp)');
 
     if (altScreen) {
-      expect(afterFromBottom <= beforeFromBottom + 1, isTrue,
-          reason: '备用屏（交互式全屏程序）里拖动终端不应产生滚动');
+      expect(peakFromBottom <= beforeFromBottom + 1, isTrue,
+          reason: '备用屏（交互式全屏程序）里拖动终端不应产生滚动（含过程峰值）');
     } else {
-      expect(afterFromBottom > beforeFromBottom + 1, isTrue,
+      expect(peakFromBottom > beforeFromBottom + 1, isTrue,
           reason: '普通模式下拖动终端没有增加可见历史 —— 就是用户报的滑不动');
     }
   });

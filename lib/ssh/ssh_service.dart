@@ -291,7 +291,18 @@ class SshConnector {
         onVerifyHostKey: (type, fingerprintBytes) async {
           if (disableHostKeyVerification) return true;
           final fingerprint = utf8.decode(fingerprintBytes, allowMalformed: true);
-          final known = await hostKeyStore.find(connection.address);
+          // 已知主机查询也加超时：本地库一旦卡住，后面 `authenticated` 会等到 30 秒
+          // 才失败，界面上显示成"连接超时"，把排查引向网络 —— 实际是本地存储。
+          KnownHost? known;
+          try {
+            known = await hostKeyStore
+                .find(connection.address)
+                .timeout(const Duration(seconds: 3));
+          } catch (error) {
+            // ignore: avoid_print
+            print('JuiceSsh: 查询已知主机失败（按未知处理）：$error');
+            known = null;
+          }
           if (known != null && known.fingerprint == fingerprint) {
             return true;
           }
@@ -304,15 +315,24 @@ class SshConnector {
           );
           final verdict = await onHostKey(challenge);
           if (verdict == HostKeyVerdict.rejected) return false;
-          await hostKeyStore.remember(
-            KnownHost(
-              id: known?.id ?? 0,
-              hostname: connection.address,
-              key: '',
-              type: type,
-              fingerprint: fingerprint,
-            ),
-          );
+          // **记住主机密钥是尽力而为的**：它只是本地持久化，绝不能让一次数据库抖动
+          // 卡住整个握手。曾经的表现是"弹窗已返回接受，随后却报连接超时"。
+          try {
+            await hostKeyStore
+                .remember(
+                  KnownHost(
+                    id: known?.id ?? 0,
+                    hostname: connection.address,
+                    key: '',
+                    type: type,
+                    fingerprint: fingerprint,
+                  ),
+                )
+                .timeout(const Duration(seconds: 3));
+          } catch (error) {
+            // ignore: avoid_print
+            print('JuiceSsh: 记录主机密钥失败（已忽略，不影响本次连接）：$error');
+          }
           return true;
         },
         onPasswordRequest: () async {
