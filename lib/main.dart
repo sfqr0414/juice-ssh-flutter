@@ -30,7 +30,6 @@ class JuiceBootstrap extends StatefulWidget {
 }
 
 class _JuiceBootstrapState extends State<JuiceBootstrap> {
-  final Stopwatch _stopwatch = Stopwatch()..start();
 
   JuiceDatabase? _database;
   SettingsController? _settings;
@@ -40,10 +39,6 @@ class _JuiceBootstrapState extends State<JuiceBootstrap> {
   @override
   void initState() {
     super.initState();
-    // 首帧时刻的埋点：用来量化"首帧等初始化"到底让用户多等了多久。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint('JuiceSSH 首帧: main 之后 ${_stopwatch.elapsedMilliseconds}ms');
-    });
     unawaited(_initialize());
   }
 
@@ -52,7 +47,6 @@ class _JuiceBootstrapState extends State<JuiceBootstrap> {
   /// → 载入文案（对应 `strings.xml` 与 `values-zh`）。
   Future<void> _initialize() async {
     final database = await JuiceDatabase.open();
-    final databaseMs = _stopwatch.elapsedMilliseconds;
 
     // 三者互不依赖（只有设置需要数据库），并发加载：总耗时取最慢的一项，
     // 而不是三者之和。
@@ -62,11 +56,6 @@ class _JuiceBootstrapState extends State<JuiceBootstrap> {
       JuiceStrings.load(WidgetsBinding.instance.platformDispatcher.locale),
     ]);
 
-    debugPrint(
-      'JuiceSSH 启动耗时: 开库 ${databaseMs}ms + 资源/设置/文案 '
-      '${_stopwatch.elapsedMilliseconds - databaseMs}ms '
-      '= ${_stopwatch.elapsedMilliseconds}ms',
-    );
 
     if (!mounted) return;
     setState(() {

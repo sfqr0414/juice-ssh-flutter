@@ -144,8 +144,6 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 上下文菜单是否正开着（用于屏蔽菜单期间那次抬手被当成轻点）。
   bool _contextMenuOpen = false;
 
-  /// 上一次打出的几何诊断行，用来只在数值变化时输出（定位终端顶部偏移用）。
-  String? _lastGeometry;
 
   /// 额外键行是否停在功能键页。
   bool _showingFunctionKeys = false;
@@ -165,11 +163,7 @@ class _TerminalPageState extends State<TerminalPage> {
   /// 终端控件最近一次布局的逻辑尺寸，用于像素 → 单元格换算。
   Size? _terminalLayoutSize;
 
-  /// 终端控件左上角在屏幕上的逻辑 y（构建时刷新），用于和首行墨迹对账。
-  double? _terminalBoxTop;
 
-  /// Scaffold 之外读到的真实状态栏高度（构建时刷新），诊断用。
-  double? _outerTopInset;
 
   /// 首次进终端时叠在最前面的教程层。
   ///
@@ -200,11 +194,9 @@ class _TerminalPageState extends State<TerminalPage> {
     // 后台会话遇到主机密钥/密码质询一律按拒绝处理。
     _controller.onHostKeyChallenge = (challenge) async {
       // 诊断（第 33 轮）：区分"回调没进来/未 mounted"与"卡在弹窗里"。
-      debugPrint('JuiceSshHandler: 页面回调进入 mounted=$mounted');
       if (!mounted) return HostKeyVerdict.rejected;
       // ignore: avoid_print
       final verdict = await JuiceDialogs.confirmHostKey(context, challenge);
-      debugPrint('JuiceSshHandler: 弹窗返回 $verdict');
       return verdict;
     };
     _controller.onPasswordPrompt = (prompt, echo) async {
@@ -238,18 +230,6 @@ class _TerminalPageState extends State<TerminalPage> {
     // 所以只在首帧采样会看不到 resize 之后的真实行列数。这里再补一次延迟采样。
     Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
-      final terminal = _controller.terminal;
-      debugPrint(
-        'JuiceSshGeom(delayed): box=${_terminalLayoutSize?.width.toInt()}x'
-        '${_terminalLayoutSize?.height.round()} '
-        'boxTop=${_terminalBoxTop?.toStringAsFixed(1)} '
-        'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
-        'lines=${terminal.buffer.lines.length} '
-        'cursorY=${terminal.buffer.absoluteCursorY} '
-        'fontSize=${_controller.textStyle.fontSize} '
-        'popupKeys=$_popupKeyboardVisible '
-        'scrollback=${terminal.buffer.lines.length - terminal.viewHeight}',
-      );
     });
     if (acquired.created) {
       // 建连过程可能弹对话框，等首帧渲染完再开始，避免在 initState 期间弹窗。
@@ -507,18 +487,8 @@ class _TerminalPageState extends State<TerminalPage> {
     final terminal = _controller.terminal;
     final trimmed = _trimTrailingBlankLines(terminal);
     _clampTerminalScroll(extraShift: trimmed);
-    final position =
-        _terminalScroll.hasClients ? _terminalScroll.position : null;
     var head = terminal.buffer.getText().toString().replaceAll('\n', '/').trim();
     if (head.length > 44) head = head.substring(0, 44);
-    debugPrint(
-      'JuiceSshGeom3($tag): cols=${terminal.viewWidth} '
-      'rows=${terminal.viewHeight} lines=${terminal.buffer.lines.length} '
-      'cursorY=${terminal.buffer.absoluteCursorY} trimmed=$trimmed '
-      'viewport=${position?.viewportDimension.toStringAsFixed(1)} '
-      'max=${position?.maxScrollExtent.toStringAsFixed(1)} '
-      'pixels=${position?.pixels.toStringAsFixed(1)} text=$head',
-    );
   }
 
   /// 裁掉缓冲区**末尾的空行**，让长度回到正好一屏；返回裁掉的行数。
@@ -916,10 +886,8 @@ class _TerminalPageState extends State<TerminalPage> {
     final position = settings.terminalKeyboardPosition;
     // **真正的状态栏高度**。必须在这里（Scaffold 之外）取：Scaffold 会给 body 的
     // MediaQuery 里再叠加一个 AppBar 高度，body 内读到的 `padding.top` 是
-    // 状态栏 + 56 —— 本页实测 104.8dp（见 JuiceSshGeom 的 padTop），
-    // 而真正的状态栏只有 48.8dp。
+    // 状态栏 + 56 —— 本页实测 104.8dp，而真正的状态栏只有 48.8dp。
     final topInset = MediaQuery.paddingOf(context).top;
-    _outerTopInset = topInset;
 
     return PopScope(
       canPop: false,
@@ -1228,11 +1196,6 @@ class _TerminalPageState extends State<TerminalPage> {
     // 备用屏的禁滑由 `_buildTerminal` 里的 `ScrollConfiguration(dragDevices: {})` 负责，
     // 判据是 xterm 实时状态 `terminal.isUsingAltBuffer`（已用真实拖动验证：不滚）。
     assert(() {
-      if (_terminalScroll.hasClients) {
-        final pos = _terminalScroll.position;
-        debugPrint('JuiceSshScroll: pixels=${pos.pixels.toStringAsFixed(1)} '
-            'max=${pos.maxScrollExtent.toStringAsFixed(1)}');
-      }
       return true;
     }());
   }
@@ -1373,47 +1336,6 @@ class _TerminalPageState extends State<TerminalPage> {
               // 与控件高度对账才能判定是"缓冲区多了空行"还是"绘制原点被推低"。
               // 几何诊断：数值变化时打一行（首次构建时终端还是 xterm 的默认
               // 80×24，resize 发生在布局之后，所以要连着两次都看到才完整）。
-              if (constraints.maxHeight > 0) {
-                final terminal = _controller.terminal;
-                if (terminal.viewHeight > 0) {
-                  // 直接量控件自己在屏幕上的位置：`boxTop` 是逻辑像素，
-                  // 乘 dpr 就是物理像素，用来和"首行墨迹 y=241"对账。
-                  final box = context.findRenderObject() as RenderBox?;
-                  // `localToGlobal` 会一路 `getTransformTo` 往上走，只要有一个祖先
-                  // 还没完成布局就在 `hasSize` 上断言。这不是"理论上可能"：本段在
-                  // `LayoutBuilder` 里执行（**布局期**），而祖先包含路由转场的
-                  // `RenderFractionalTranslation` —— 集成测试里每次都命中，抛出的
-                  // 断言会把整个 layout callback 打断（第 49 轮用堆栈定位到本行）。
-                  //
-                  // 布局是自上而下的：这个祖先没布局完，本控件也一定还没有尺寸，
-                  // 所以用 `hasSize` 挡住即可；未就绪就沿用上一次的 `_terminalBoxTop`。
-                  final global = (box == null || !box.hasSize)
-                      ? Offset.zero
-                      : box.localToGlobal(Offset.zero);
-                  _terminalBoxTop = global.dy;
-                  final mq = MediaQuery.of(context);
-                  final line =
-                      'JuiceSshGeom: widget=${constraints.maxWidth.toInt()}x'
-                      '${constraints.maxHeight.round()} '
-                      'boxTop=${global.dy.toStringAsFixed(1)} '
-                      'cols=${terminal.viewWidth} rows=${terminal.viewHeight} '
-                      'cellH=~${(constraints.maxHeight / terminal.viewHeight).toStringAsFixed(2)} '
-                      'bufferLines=${terminal.buffer.lines.length} '
-                      'cursorY=${terminal.buffer.absoluteCursorY} '
-                      'scrollback=${terminal.buffer.lines.length - terminal.viewHeight} '
-                      'fontSize=${_controller.textStyle.fontSize} '
-                      'padTop=${mq.padding.top.toStringAsFixed(1)} '
-                      'outerTop=${_outerTopInset?.toStringAsFixed(1)} '
-                      'viewTop=${mq.viewPadding.top.toStringAsFixed(1)} '
-                      'insetsB=${mq.viewInsets.bottom.toStringAsFixed(1)} '
-                      'dpr=${mq.devicePixelRatio.toStringAsFixed(3)} '
-                      'screenH=${mq.size.height.toStringAsFixed(1)}';
-                  if (line != _lastGeometry) {
-                    _lastGeometry = line;
-                    debugPrint(line);
-                  }
-                }
-              }
               return Listener(
                 // 这个 key 是诊断用的锚点（第 60 轮）：用来在集成测试里判定
                 // "屏幕上那份 TerminalView 是否真的在这段子树里"。

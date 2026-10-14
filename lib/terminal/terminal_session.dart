@@ -91,8 +91,6 @@ class TerminalSessionController extends ChangeNotifier {
       } else if (!interactiveProgram.value) {
         interactiveProgram.value = true;
       }
-      debugPrint('JuiceSshInteractive: on=${ons.length} off=${offs.length} '
-          'leaving=$leaving value=${interactiveProgram.value}');
     }
     _interactiveTail =
         window.length > 24 ? window.substring(window.length - 24) : window;
@@ -257,9 +255,7 @@ class TerminalSessionController extends ChangeNotifier {
         // 失败，界面还只显示误导性的"连接超时"（第 26 轮定位到）。
         // 所以这里**短暂等待**回调贴上；确实没有页面附着（后台会话）才拒绝。
         onHostKey: (challenge) async {
-          debugPrint('JuiceSshHandler: 主机密钥质询到达，回调已挂=${onHostKeyChallenge != null}');
           final handler = await _awaitHandler(() => onHostKeyChallenge);
-          debugPrint('JuiceSshHandler: 等待 5 秒后回调已挂=${handler != null}');
           if (handler == null) return HostKeyVerdict.rejected;
           return handler(challenge);
         },
@@ -374,7 +370,6 @@ class TerminalSessionController extends ChangeNotifier {
     if (session == null || _state != TerminalSessionState.connected) return;
 
     if (_deviceAttributesAnswer.hasMatch(data)) {
-      debugPrint('JuiceSshDa: 丢弃设备属性应答 ${data.codeUnits.length} 字节');
       return;
     }
 
@@ -416,7 +411,6 @@ class TerminalSessionController extends ChangeNotifier {
   void _handleBell() {
     // "终端确实收到了 \a" 的直接证据（release 构建也会打到 logcat 的 flutter 标签）。
     // 没有这行时，"模式 1 下没有通知"既可能是走了震动分支，也可能是铃压根没响。
-    debugPrint('JuiceSshBell: received mode=${settings.terminalBellMode}');
     switch (settings.terminalBellMode) {
       case 1:
         // 震动
